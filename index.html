@@ -491,18 +491,28 @@
         
         // Main App Component
         function WeeklyPlanningApp() {
-            const [currentStep, setCurrentStep] = useState(0);
+            // Load saved state from sessionStorage
+            const savedState = (() => {
+                try {
+                    const saved = sessionStorage.getItem('planningAppState');
+                    return saved ? JSON.parse(saved) : null;
+                } catch (e) {
+                    return null;
+                }
+            })();
+            
+            const [currentStep, setCurrentStep] = useState(savedState?.currentStep || 0);
             const [sessions, setSessions] = useState([]);
             const [loading, setLoading] = useState(true);
             const [gapiLoaded, setGapiLoaded] = useState(false);
             const [accessToken, setAccessToken] = useState(null);
             const [calendarSaving, setCalendarSaving] = useState(false);
-            const [quickMode, setQuickMode] = useState(false);
+            const [quickMode, setQuickMode] = useState(savedState?.quickMode || false);
             const [showAchievements, setShowAchievements] = useState(false);
             const [newAchievements, setNewAchievements] = useState([]);
-            const startTime = useRef(new Date());
+            const startTime = useRef(savedState?.startTime ? new Date(savedState.startTime) : new Date());
             
-            const [currentSession, setCurrentSession] = useState({
+            const [currentSession, setCurrentSession] = useState(savedState?.currentSession || {
                 date: new Date().toISOString().split('T')[0],
                 ritual_start_time: new Date().toISOString(),
                 ritual_end_time: null,
@@ -527,6 +537,17 @@
                 minutes: 30
             });
             
+            // Save state to sessionStorage whenever it changes
+            useEffect(() => {
+                const stateToSave = {
+                    currentStep,
+                    quickMode,
+                    currentSession,
+                    startTime: startTime.current.toISOString()
+                };
+                sessionStorage.setItem('planningAppState', JSON.stringify(stateToSave));
+            }, [currentStep, quickMode, currentSession]);
+            
             const steps = [
                 { id: "start", title: "Welcome", icon: "🚀", timer: false },
                 { id: "align", title: "Align", icon: "🎯", timer: true },
@@ -535,6 +556,23 @@
                 { id: "complete", title: "Complete", icon: "✨", timer: false },
                 { id: "dashboard", title: "Dashboard", icon: "📊", timer: false }
             ];
+            
+            // Check for OAuth callback in URL
+            useEffect(() => {
+                const hash = window.location.hash;
+                if (hash && hash.includes('access_token')) {
+                    const params = new URLSearchParams(hash.substring(1));
+                    const token = params.get('access_token');
+                    if (token) {
+                        setAccessToken(token);
+                        if (gapi.client) {
+                            gapi.client.setToken({ access_token: token });
+                        }
+                        // Clean up URL
+                        window.history.replaceState({}, document.title, window.location.pathname);
+                    }
+                }
+            }, []);
             
             // Initialize Google API
             useEffect(() => {
@@ -642,6 +680,15 @@
                     return;
                 }
                 
+                // Save current state before OAuth flow
+                const stateToSave = {
+                    currentStep,
+                    quickMode,
+                    currentSession,
+                    startTime: startTime.current.toISOString()
+                };
+                sessionStorage.setItem('planningAppState', JSON.stringify(stateToSave));
+                
                 const tokenClient = google.accounts.oauth2.initTokenClient({
                     client_id: CLIENT_ID,
                     scope: SCOPES,
@@ -655,6 +702,9 @@
                             access_token: response.access_token
                         });
                     },
+                    // Use redirect flow on mobile devices
+                    ux_mode: /iPhone|iPad|iPod|Android/i.test(navigator.userAgent) ? 'redirect' : 'popup',
+                    redirect_uri: window.location.origin
                 });
                 
                 tokenClient.requestAccessToken();
@@ -801,6 +851,7 @@
             };
             
             const startNewSession = () => {
+                sessionStorage.removeItem('planningAppState');
                 window.location.reload();
             };
             
