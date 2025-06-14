@@ -21,6 +21,7 @@
         function Dashboard() {
           const [sessions, setSessions] = useState([]);
           const [loading, setLoading] = useState(true);
+          const [showDetails, setShowDetails] = useState(false);
 
           useEffect(() => {
             fetchSessions();
@@ -31,7 +32,7 @@
 
           const fetchSessions = async () => {
             try {
-              const response = await fetch(`${SUPABASE_URL}/rest/v1/planning_sessions?select=*`, {
+              const response = await fetch(`${SUPABASE_URL}/rest/v1/planning_sessions?select=*&order=date.desc`, {
                 headers: {
                   'apikey': SUPABASE_ANON_KEY,
                   'Authorization': `Bearer ${SUPABASE_ANON_KEY}`
@@ -49,7 +50,11 @@
           const calculateMetrics = () => {
             const totalWeeks = sessions.length;
             const consecutiveWeeks = calculateConsecutive(sessions);
-            const totalMinutes = sessions.reduce((sum, s) => sum + s.minutes, 0);
+            
+            // Use ritual_duration_minutes if available, fallback to minutes field
+            const totalMinutes = sessions.reduce((sum, s) => sum + (s.ritual_duration_minutes || s.minutes || 0), 0);
+            const avgMinutes = totalWeeks > 0 ? Math.round(totalMinutes / totalWeeks) : 0;
+            
             const weeksAllTasksCompleted = sessions.filter(s => s.tasks_completed).length;
             const consecutiveTasksCompleted = calculateConsecutiveCompleted(sessions);
             const totalTasksCompleted = sessions.reduce((sum, s) => {
@@ -63,14 +68,19 @@
             // Quarterly quests (assuming 1 quest per 12 weeks)
             const quarterlyQuests = Math.floor(totalWeeks / 12);
 
+            // Sessions with time tracking
+            const sessionsWithTimeTracking = sessions.filter(s => s.ritual_duration_minutes).length;
+
             return {
               totalWeeks,
               consecutiveWeeks,
               totalMinutes,
+              avgMinutes,
               weeksAllTasksCompleted,
               consecutiveTasksCompleted,
               totalTasksCompleted,
-              quarterlyQuests
+              quarterlyQuests,
+              sessionsWithTimeTracking
             };
           };
 
@@ -97,6 +107,22 @@
               else break;
             }
             return count;
+          };
+
+          const formatDate = (dateStr) => {
+            return new Date(dateStr).toLocaleDateString('de-DE', {
+              day: '2-digit',
+              month: '2-digit',
+              year: 'numeric'
+            });
+          };
+
+          const formatTime = (timeStr) => {
+            if (!timeStr) return '-';
+            return new Date(timeStr).toLocaleTimeString('de-DE', {
+              hour: '2-digit',
+              minute: '2-digit'
+            });
           };
 
           const metrics = calculateMetrics();
@@ -133,6 +159,11 @@
                   </div>
                   
                   <div className="bg-white border border-gray-200 rounded-lg p-6 text-center shadow-sm">
+                    <p className="text-sm text-gray-600 mb-2">Average minutes per ritual</p>
+                    <p className="text-4xl font-bold text-indigo-600">{metrics.avgMinutes}</p>
+                  </div>
+                  
+                  <div className="bg-white border border-gray-200 rounded-lg p-6 text-center shadow-sm">
                     <p className="text-sm text-gray-600 mb-2">Total weeks committed all three weekly tasks</p>
                     <p className="text-4xl font-bold text-yellow-600">{metrics.weeksAllTasksCompleted}</p>
                   </div>
@@ -147,11 +178,66 @@
                     <p className="text-4xl font-bold text-indigo-600">{metrics.totalTasksCompleted}</p>
                   </div>
                   
-                  <div className="bg-white border border-gray-200 rounded-lg p-6 text-center shadow-sm md:col-span-2 lg:col-span-3">
+                  <div className="bg-white border border-gray-200 rounded-lg p-6 text-center shadow-sm md:col-span-2 lg:col-span-1">
                     <p className="text-sm text-gray-600 mb-2">Total completed quarterly quests so far</p>
                     <p className="text-4xl font-bold text-teal-600">{metrics.quarterlyQuests}</p>
                   </div>
                 </div>
+
+                {/* Toggle für Session Details */}
+                <div className="mt-8 text-center">
+                  <button
+                    onClick={() => setShowDetails(!showDetails)}
+                    className="text-blue-600 hover:text-blue-800 underline"
+                  >
+                    {showDetails ? 'Session-Details ausblenden' : 'Session-Details anzeigen'}
+                  </button>
+                </div>
+
+                {/* Session Details Table */}
+                {showDetails && (
+                  <div className="mt-8 bg-white border border-gray-200 rounded-lg shadow-sm overflow-hidden">
+                    <h3 className="text-lg font-semibold p-4 border-b bg-gray-50">Letzte Sessions</h3>
+                    <div className="overflow-x-auto">
+                      <table className="w-full">
+                        <thead className="bg-gray-50 text-xs uppercase text-gray-700">
+                          <tr>
+                            <th className="px-4 py-3 text-left">Datum</th>
+                            <th className="px-4 py-3 text-left">Start</th>
+                            <th className="px-4 py-3 text-left">Ende</th>
+                            <th className="px-4 py-3 text-left">Dauer</th>
+                            <th className="px-4 py-3 text-left">Aufgaben</th>
+                            <th className="px-4 py-3 text-left">Erledigt</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-200">
+                          {sessions.slice(0, 10).map((session, index) => (
+                            <tr key={session.id || index} className="hover:bg-gray-50">
+                              <td className="px-4 py-3 text-sm">{formatDate(session.date)}</td>
+                              <td className="px-4 py-3 text-sm">{formatTime(session.ritual_start_time)}</td>
+                              <td className="px-4 py-3 text-sm">{formatTime(session.ritual_end_time)}</td>
+                              <td className="px-4 py-3 text-sm">
+                                {session.ritual_duration_minutes 
+                                  ? `${session.ritual_duration_minutes} Min` 
+                                  : `${session.minutes || '-'} Min`}
+                              </td>
+                              <td className="px-4 py-3 text-sm">
+                                {[session.task1, session.task2, session.task3].filter(Boolean).length}/3
+                              </td>
+                              <td className="px-4 py-3 text-sm">
+                                {session.tasks_completed ? (
+                                  <span className="text-green-600">✓</span>
+                                ) : (
+                                  <span className="text-gray-400">-</span>
+                                )}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
 
                 <div className="mt-8 text-center text-sm text-gray-500">
                   Zuletzt aktualisiert: {new Date().toLocaleString('de-DE')}
