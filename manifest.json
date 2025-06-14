@@ -2,7 +2,7 @@
   "name": "Wöchentliches Planungsritual",
   "short_name": "Planungsritual",
   "description": "Dein persönliches Tool für wöchentliche Planung und Reflexion",
-  "start_url": "/",
+  "start_url": "./",
   "display": "standalone",
   "background_color": "#f9fafb",
   "theme_color": "#2563eb",
