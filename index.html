@@ -1,0 +1,409 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Wöchentliches Planungsritual</title>
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body>
+    <div id="root"></div>
+    <script type="text/babel">
+        const { useState, useEffect } = React;
+        
+        // Icons als SVG Components
+        const Target = () => (
+            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <circle cx="12" cy="12" r="10"></circle>
+                <circle cx="12" cy="12" r="6"></circle>
+                <circle cx="12" cy="12" r="2"></circle>
+            </svg>
+        );
+        
+        const TrendingUp = () => (
+            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
+            </svg>
+        );
+        
+        const CheckCircle = () => (
+            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+        );
+        
+        const Calendar = () => (
+            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
+                <line x1="16" y1="2" x2="16" y2="6"></line>
+                <line x1="8" y1="2" x2="8" y2="6"></line>
+                <line x1="3" y1="10" x2="21" y2="10"></line>
+            </svg>
+        );
+
+        // Supabase Config
+        const SUPABASE_URL = 'https://yazzzpyohcdyvtdpjakb.supabase.co';
+        const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inlhenp6cHlvaGNkeXZ0ZHBqYWtiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDk4NjIwOTksImV4cCI6MjA2NTQzODA5OX0.GnrnIlTJIw4VqKm4bHBAkO5vXJ1aWyrVL5oxIl1lCwA';
+
+        function WeeklyPlanningApp() {
+          const [currentStep, setCurrentStep] = useState(0);
+          const [sessions, setSessions] = useState([]);
+          const [loading, setLoading] = useState(true);
+          const [currentSession, setCurrentSession] = useState({
+            date: new Date().toISOString().split('T')[0],
+            tasks_completed: false,
+            quarterly_goals: '',
+            successes: '',
+            improvement: '',
+            task1: '',
+            task2: '',
+            task3: '',
+            minutes: 30
+          });
+
+          const steps = [
+            { title: "Ausrichten", icon: <Target /> },
+            { title: "Kurs prüfen", icon: <TrendingUp /> },
+            { title: "Reflektieren", icon: <CheckCircle /> },
+            { title: "Erfolge", icon: <Calendar /> },
+            { title: "Planen", icon: <Target /> },
+            { title: "Dashboard", icon: <TrendingUp /> }
+          ];
+
+          // Lade Sessions von Supabase
+          useEffect(() => {
+            fetchSessions();
+          }, []);
+
+          const fetchSessions = async () => {
+            try {
+              const response = await fetch(`${SUPABASE_URL}/rest/v1/planning_sessions?select=*`, {
+                headers: {
+                  'apikey': SUPABASE_ANON_KEY,
+                  'Authorization': `Bearer ${SUPABASE_ANON_KEY}`
+                }
+              });
+              const data = await response.json();
+              setSessions(data || []);
+              setLoading(false);
+            } catch (error) {
+              console.error('Fehler beim Laden:', error);
+              setLoading(false);
+            }
+          };
+
+          // Speichere Session in Supabase
+          const saveSession = async (session) => {
+            try {
+              const response = await fetch(`${SUPABASE_URL}/rest/v1/planning_sessions`, {
+                method: 'POST',
+                headers: {
+                  'apikey': SUPABASE_ANON_KEY,
+                  'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+                  'Content-Type': 'application/json',
+                  'Prefer': 'return=representation'
+                },
+                body: JSON.stringify(session)
+              });
+              const data = await response.json();
+              setSessions([...sessions, data[0]]);
+            } catch (error) {
+              console.error('Fehler beim Speichern:', error);
+            }
+          };
+
+          const calculateMetrics = () => {
+            const totalWeeks = sessions.length;
+            const consecutiveWeeks = calculateConsecutive(sessions);
+            const totalMinutes = sessions.reduce((sum, s) => sum + s.minutes, 0);
+            const weeksAllTasksCompleted = sessions.filter(s => s.tasks_completed).length;
+            const consecutiveTasksCompleted = calculateConsecutiveCompleted(sessions);
+            const totalTasksCompleted = sessions.reduce((sum, s) => {
+              let count = 0;
+              if (s.task1) count++;
+              if (s.task2) count++;
+              if (s.task3) count++;
+              return sum + count;
+            }, 0);
+
+            return {
+              totalWeeks,
+              consecutiveWeeks,
+              totalMinutes,
+              weeksAllTasksCompleted,
+              consecutiveTasksCompleted,
+              totalTasksCompleted
+            };
+          };
+
+          const calculateConsecutive = (sessions) => {
+            if (sessions.length === 0) return 0;
+            let count = 1;
+            const sorted = [...sessions].sort((a, b) => new Date(b.date) - new Date(a.date));
+            
+            for (let i = 1; i < sorted.length; i++) {
+              const diff = (new Date(sorted[i-1].date) - new Date(sorted[i].date)) / (1000 * 60 * 60 * 24);
+              if (diff <= 7) count++;
+              else break;
+            }
+            return count;
+          };
+
+          const calculateConsecutiveCompleted = (sessions) => {
+            if (sessions.length === 0) return 0;
+            let count = 0;
+            const sorted = [...sessions].sort((a, b) => new Date(b.date) - new Date(a.date));
+            
+            for (let i = 0; i < sorted.length; i++) {
+              if (sorted[i].tasks_completed) count++;
+              else break;
+            }
+            return count;
+          };
+
+          const handleNext = async () => {
+            if (currentStep === 4) {
+              await saveSession(currentSession);
+              setCurrentStep(5);
+            } else if (currentStep < 5) {
+              setCurrentStep(currentStep + 1);
+            }
+          };
+
+          const startNewSession = () => {
+            setCurrentStep(0);
+            setCurrentSession({
+              date: new Date().toISOString().split('T')[0],
+              tasks_completed: false,
+              quarterly_goals: '',
+              successes: '',
+              improvement: '',
+              task1: '',
+              task2: '',
+              task3: '',
+              minutes: 30
+            });
+          };
+
+          const metrics = calculateMetrics();
+
+          if (loading) {
+            return (
+              <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+                <p className="text-gray-600">Lade Daten...</p>
+              </div>
+            );
+          }
+
+          return (
+            <div className="min-h-screen bg-gray-50 py-8">
+              <div className="max-w-4xl mx-auto px-4">
+                <h1 className="text-3xl font-bold text-gray-900 mb-8 text-center">
+                  Wöchentliches Planungsritual
+                </h1>
+
+                {/* Progress Bar */}
+                <div className="mb-8">
+                  <div className="flex justify-between mb-2">
+                    {steps.map((step, index) => (
+                      <div
+                        key={index}
+                        className={`flex flex-col items-center ${
+                          index <= currentStep ? 'text-blue-600' : 'text-gray-400'
+                        }`}
+                      >
+                        {step.icon}
+                        <span className="text-xs mt-1">{step.title}</span>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="w-full bg-gray-200 rounded-full h-2">
+                    <div
+                      className="bg-blue-600 h-2 rounded-full transition-all"
+                      style={{ width: `${((currentStep + 1) / steps.length) * 100}%` }}
+                    />
+                  </div>
+                </div>
+
+                {/* Content */}
+                <div className="bg-white rounded-lg shadow-lg p-8">
+                  {currentStep === 0 && (
+                    <div className="space-y-4">
+                      <h2 className="text-2xl font-semibold mb-4">1. Ausrichten</h2>
+                      <p className="text-gray-600">
+                        Nimm dir einen Moment, um dich zu zentrieren und auf die kommende Woche einzustimmen.
+                      </p>
+                      <button
+                        onClick={handleNext}
+                        className="mt-6 bg-blue-600 text-white px-6 py-2 rounded hover:bg-blue-700"
+                      >
+                        Weiter
+                      </button>
+                    </div>
+                  )}
+
+                  {currentStep === 1 && (
+                    <div className="space-y-4">
+                      <h2 className="text-2xl font-semibold mb-4">2. Bin ich auf Kurs mit meinen Quartalszielen?</h2>
+                      <textarea
+                        className="w-full p-3 border rounded"
+                        rows="3"
+                        placeholder="Wenn nicht, wie komme ich zurück?"
+                        value={currentSession.quarterly_goals}
+                        onChange={(e) => setCurrentSession({...currentSession, quarterly_goals: e.target.value})}
+                      />
+                      <div className="flex items-center space-x-3">
+                        <input
+                          type="checkbox"
+                          id="tasks"
+                          checked={currentSession.tasks_completed}
+                          onChange={(e) => setCurrentSession({...currentSession, tasks_completed: e.target.checked})}
+                          className="w-4 h-4"
+                        />
+                        <label htmlFor="tasks" className="text-gray-700">
+                          Habe ich meine drei wöchentlichen Aufgaben gemacht?
+                        </label>
+                      </div>
+                      <button
+                        onClick={handleNext}
+                        className="mt-6 bg-blue-600 text-white px-6 py-2 rounded hover:bg-blue-700"
+                      >
+                        Weiter
+                      </button>
+                    </div>
+                  )}
+
+                  {currentStep === 2 && (
+                    <div className="space-y-4">
+                      <h2 className="text-2xl font-semibold mb-4">3. Reflektieren</h2>
+                      <p className="text-gray-600">
+                        Lass die vergangene Woche Revue passieren. Was lief gut? Was könnte besser laufen?
+                      </p>
+                      <button
+                        onClick={handleNext}
+                        className="mt-6 bg-blue-600 text-white px-6 py-2 rounded hover:bg-blue-700"
+                      >
+                        Weiter
+                      </button>
+                    </div>
+                  )}
+
+                  {currentStep === 3 && (
+                    <div className="space-y-4">
+                      <h2 className="text-2xl font-semibold mb-4">4. Erfolge & Dankbarkeit</h2>
+                      <textarea
+                        className="w-full p-3 border rounded"
+                        rows="4"
+                        placeholder="Liste alle Erfolge/Dinge für die du dankbar bist/Meilensteine der letzten Woche."
+                        value={currentSession.successes}
+                        onChange={(e) => setCurrentSession({...currentSession, successes: e.target.value})}
+                      />
+                      <input
+                        type="text"
+                        className="w-full p-3 border rounded"
+                        placeholder="Welche eine Sache möchtest du verbessern nächste Woche?"
+                        value={currentSession.improvement}
+                        onChange={(e) => setCurrentSession({...currentSession, improvement: e.target.value})}
+                      />
+                      <button
+                        onClick={handleNext}
+                        className="mt-6 bg-blue-600 text-white px-6 py-2 rounded hover:bg-blue-700"
+                      >
+                        Weiter
+                      </button>
+                    </div>
+                  )}
+
+                  {currentStep === 4 && (
+                    <div className="space-y-4">
+                      <h2 className="text-2xl font-semibold mb-4">5. Planen</h2>
+                      <p className="text-gray-600 mb-4">
+                        Plane drei high-leverage Aufgaben und schreibe sie in den Kalender.
+                      </p>
+                      <input
+                        type="text"
+                        className="w-full p-3 border rounded mb-3"
+                        placeholder="Aufgabe 1"
+                        value={currentSession.task1}
+                        onChange={(e) => setCurrentSession({...currentSession, task1: e.target.value})}
+                      />
+                      <input
+                        type="text"
+                        className="w-full p-3 border rounded mb-3"
+                        placeholder="Aufgabe 2"
+                        value={currentSession.task2}
+                        onChange={(e) => setCurrentSession({...currentSession, task2: e.target.value})}
+                      />
+                      <input
+                        type="text"
+                        className="w-full p-3 border rounded"
+                        placeholder="Aufgabe 3"
+                        value={currentSession.task3}
+                        onChange={(e) => setCurrentSession({...currentSession, task3: e.target.value})}
+                      />
+                      <button
+                        onClick={handleNext}
+                        className="mt-6 bg-blue-600 text-white px-6 py-2 rounded hover:bg-blue-700"
+                      >
+                        Abschließen
+                      </button>
+                    </div>
+                  )}
+
+                  {currentStep === 5 && (
+                    <div className="space-y-6">
+                      <h2 className="text-2xl font-semibold mb-6">Dashboard</h2>
+                      
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div className="bg-blue-50 p-4 rounded">
+                          <p className="text-sm text-gray-600">Total weeks doing weekly planning ritual</p>
+                          <p className="text-2xl font-bold text-blue-600">{metrics.totalWeeks}</p>
+                        </div>
+                        
+                        <div className="bg-green-50 p-4 rounded">
+                          <p className="text-sm text-gray-600">Consecutive weeks doing weekly planning ritual</p>
+                          <p className="text-2xl font-bold text-green-600">{metrics.consecutiveWeeks}</p>
+                        </div>
+                        
+                        <div className="bg-purple-50 p-4 rounded">
+                          <p className="text-sm text-gray-600">Minutes spent on weekly planning ritual</p>
+                          <p className="text-2xl font-bold text-purple-600">{metrics.totalMinutes}</p>
+                        </div>
+                        
+                        <div className="bg-yellow-50 p-4 rounded">
+                          <p className="text-sm text-gray-600">Total weeks committed all three weekly tasks</p>
+                          <p className="text-2xl font-bold text-yellow-600">{metrics.weeksAllTasksCompleted}</p>
+                        </div>
+                        
+                        <div className="bg-red-50 p-4 rounded">
+                          <p className="text-sm text-gray-600">Consecutive weeks committed all three weekly tasks</p>
+                          <p className="text-2xl font-bold text-red-600">{metrics.consecutiveTasksCompleted}</p>
+                        </div>
+                        
+                        <div className="bg-indigo-50 p-4 rounded">
+                          <p className="text-sm text-gray-600">Total committed tasks completed</p>
+                          <p className="text-2xl font-bold text-indigo-600">{metrics.totalTasksCompleted}</p>
+                        </div>
+                      </div>
+
+                      <button
+                        onClick={startNewSession}
+                        className="mt-6 bg-green-600 text-white px-6 py-2 rounded hover:bg-green-700"
+                      >
+                        Neue Woche starten
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          );
+        }
+
+        ReactDOM.render(<WeeklyPlanningApp />, document.getElementById('root'));
+    </script>
+</body>
+</html>
