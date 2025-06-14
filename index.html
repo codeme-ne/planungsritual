@@ -113,6 +113,7 @@
             ritual_end_time: null,
             ritual_duration_minutes: null,
             tasks_completed: false,
+            tasks_completed_count: 0,
             quarterly_goals: '',
             successes: '',
             improvement: '',
@@ -382,6 +383,7 @@
               ritual_end_time: null,
               ritual_duration_minutes: null,
               tasks_completed: false,
+              tasks_completed_count: 0,
               quarterly_goals: '',
               successes: '',
               improvement: '',
@@ -473,17 +475,78 @@
                         value={currentSession.quarterly_goals}
                         onChange={(e) => setCurrentSession({...currentSession, quarterly_goals: e.target.value})}
                       />
-                      <div className="flex items-center space-x-3">
-                        <input
-                          type="checkbox"
-                          id="tasks"
-                          checked={currentSession.tasks_completed}
-                          onChange={(e) => setCurrentSession({...currentSession, tasks_completed: e.target.checked})}
-                          className="w-4 h-4"
-                        />
-                        <label htmlFor="tasks" className="text-gray-700">
-                          Habe ich meine drei wöchentlichen Aufgaben gemacht?
-                        </label>
+                      <div className="space-y-2">
+                        <p className="text-gray-700 font-medium mb-2">Wieviele wöchentliche Aufgaben habe ich letztmalig geschafft?</p>
+                        <div className="flex justify-center gap-4">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setCurrentSession({
+                                ...currentSession, 
+                                tasks_completed: false,
+                                tasks_completed_count: 0
+                              });
+                            }}
+                            className={`px-8 py-4 rounded-lg text-xl font-bold transition-colors ${
+                              currentSession.tasks_completed_count === 0 
+                                ? 'bg-blue-600 text-white' 
+                                : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                            }`}
+                          >
+                            0
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setCurrentSession({
+                                ...currentSession, 
+                                tasks_completed: false,
+                                tasks_completed_count: 1
+                              });
+                            }}
+                            className={`px-8 py-4 rounded-lg text-xl font-bold transition-colors ${
+                              currentSession.tasks_completed_count === 1 
+                                ? 'bg-blue-600 text-white' 
+                                : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                            }`}
+                          >
+                            1
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setCurrentSession({
+                                ...currentSession, 
+                                tasks_completed: false,
+                                tasks_completed_count: 2
+                              });
+                            }}
+                            className={`px-8 py-4 rounded-lg text-xl font-bold transition-colors ${
+                              currentSession.tasks_completed_count === 2 
+                                ? 'bg-blue-600 text-white' 
+                                : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                            }`}
+                          >
+                            2
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setCurrentSession({
+                                ...currentSession, 
+                                tasks_completed: true,
+                                tasks_completed_count: 3
+                              });
+                            }}
+                            className={`px-8 py-4 rounded-lg text-xl font-bold transition-colors ${
+                              currentSession.tasks_completed_count === 3 
+                                ? 'bg-blue-600 text-white' 
+                                : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                            }`}
+                          >
+                            3
+                          </button>
+                        </div>
                       </div>
                       <button
                         onClick={handleNext}
