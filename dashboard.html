@@ -8,30 +8,20 @@
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
         
         :root {
-            --background: 0 0% 100%;
-            --foreground: 224 71.4% 4.1%;
-            --card: 0 0% 100%;
-            --card-foreground: 224 71.4% 4.1%;
-            --popover: 0 0% 100%;
-            --popover-foreground: 224 71.4% 4.1%;
-            --primary: 220.9 39.3% 11%;
-            --primary-foreground: 210 20% 98%;
-            --secondary: 220 14.3% 95.9%;
-            --secondary-foreground: 220.9 39.3% 11%;
-            --muted: 220 14.3% 95.9%;
-            --muted-foreground: 220 8.9% 46.1%;
-            --accent: 220 14.3% 95.9%;
-            --accent-foreground: 220.9 39.3% 11%;
-            --destructive: 0 84.2% 60.2%;
-            --destructive-foreground: 210 20% 98%;
-            --border: 220 13% 91%;
-            --input: 220 13% 91%;
-            --ring: 224 71.4% 4.1%;
-            --radius: 0.5rem;
+            --bg-primary: #0a0a0a;
+            --bg-secondary: #111111;
+            --bg-card: rgba(255, 255, 255, 0.05);
+            --text-primary: #ffffff;
+            --text-secondary: #888888;
+            --accent: #3b82f6;
+            --success: #10b981;
+            --warning: #f59e0b;
+            --border: rgba(255, 255, 255, 0.1);
         }
         
         * {
@@ -42,40 +32,387 @@
         
         body {
             font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
-            background: hsl(var(--background));
-            color: hsl(var(--foreground));
-            line-height: 1.5;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            line-height: 1.6;
             -webkit-font-smoothing: antialiased;
             -moz-osx-font-smoothing: grayscale;
         }
         
-        /* Card styles matching shadcn/ui */
-        .card {
-            background: hsl(var(--card));
-            color: hsl(var(--card-foreground));
-            border-radius: calc(var(--radius) + 2px);
-            border: 1px solid hsl(var(--border));
-            box-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1);
+        /* Glass morphism effect */
+        .glass {
+            background: var(--bg-card);
+            backdrop-filter: blur(10px);
+            border: 1px solid var(--border);
+            border-radius: 16px;
         }
         
-        .card:hover {
-            box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
-            transition: box-shadow 0.2s;
+        .glass:hover {
+            background: rgba(255, 255, 255, 0.08);
+            transform: translateY(-2px);
+            transition: all 0.3s ease;
         }
         
-        /* Remove all scrollbars */
-        html, body {
-            overflow-x: hidden;
+        /* Custom scrollbar */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+        
+        ::-webkit-scrollbar-track {
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 4px;
+        }
+        
+        ::-webkit-scrollbar-thumb {
+            background: rgba(255, 255, 255, 0.2);
+            border-radius: 4px;
+        }
+        
+        ::-webkit-scrollbar-thumb:hover {
+            background: rgba(255, 255, 255, 0.3);
+        }
+        
+        /* Animations */
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+        
+        .fade-in {
+            animation: fadeIn 0.6s ease-out;
+        }
+        
+        @keyframes pulse {
+            0%, 100% {
+                opacity: 1;
+            }
+            50% {
+                opacity: 0.5;
+            }
+        }
+        
+        .animate-pulse {
+            animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+        }
+        
+        /* Progress ring */
+        .progress-ring {
+            transform: rotate(-90deg);
+        }
+        
+        .progress-ring__circle {
+            transition: stroke-dashoffset 0.8s cubic-bezier(0.4, 0, 0.2, 1);
+            stroke-linecap: round;
+        }
+        
+        /* Chart container */
+        .chart-container {
+            position: relative;
+            height: 300px;
+            width: 100%;
+        }
+        
+        @media (max-width: 768px) {
+            .chart-container {
+                height: 250px;
+            }
+        }
+        
+        /* Gradient backgrounds */
+        .gradient-bg {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+        
+        .gradient-text {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        
+        /* Loading skeleton */
+        .skeleton {
+            background: linear-gradient(90deg, rgba(255, 255, 255, 0.05) 25%, rgba(255, 255, 255, 0.1) 50%, rgba(255, 255, 255, 0.05) 75%);
+            background-size: 200% 100%;
+            animation: loading 1.5s infinite;
+        }
+        
+        @keyframes loading {
+            0% {
+                background-position: 200% 0;
+            }
+            100% {
+                background-position: -200% 0;
+            }
         }
     </style>
 </head>
 <body>
     <div id="root"></div>
     <script type="text/babel">
-        const { useState, useEffect } = React;
+        const { useState, useEffect, useRef } = React;
 
         const SUPABASE_URL = 'https://yazzzpyohcdyvtdpjakb.supabase.co';
         const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inlhenp6cHlvaGNkeXZ0ZHBqYWtiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDk4NjIwOTksImV4cCI6MjA2NTQzODA5OX0.GnrnIlTJIw4VqKm4bHBAkO5vXJ1aWyrVL5oxIl1lCwA';
+        
+        // Progress Ring Component
+        function ProgressRing({ percentage, size = 120, strokeWidth = 8, label, value, color = "#3b82f6" }) {
+            const radius = (size - strokeWidth) / 2;
+            const circumference = radius * 2 * Math.PI;
+            const offset = circumference - (percentage / 100) * circumference;
+            
+            return (
+                <div className="flex flex-col items-center">
+                    <div className="relative">
+                        <svg width={size} height={size} className="progress-ring">
+                            <circle
+                                cx={size / 2}
+                                cy={size / 2}
+                                r={radius}
+                                stroke="rgba(255, 255, 255, 0.1)"
+                                strokeWidth={strokeWidth}
+                                fill="none"
+                            />
+                            <circle
+                                className="progress-ring__circle"
+                                cx={size / 2}
+                                cy={size / 2}
+                                r={radius}
+                                stroke={color}
+                                strokeWidth={strokeWidth}
+                                fill="none"
+                                strokeDasharray={circumference}
+                                strokeDashoffset={offset}
+                            />
+                        </svg>
+                        <div className="absolute inset-0 flex flex-col items-center justify-center">
+                            <div className="text-3xl font-light">{value}</div>
+                            <div className="text-xs text-gray-400">{label}</div>
+                        </div>
+                    </div>
+                </div>
+            );
+        }
+        
+        // Stat Card Component
+        function StatCard({ title, value, icon, trend, color = "blue" }) {
+            const colors = {
+                blue: "from-blue-500 to-blue-600",
+                green: "from-green-500 to-green-600",
+                purple: "from-purple-500 to-purple-600",
+                orange: "from-orange-500 to-orange-600"
+            };
+            
+            return (
+                <div className="glass p-6 hover:scale-105 transition-transform duration-300 fade-in">
+                    <div className="flex items-start justify-between mb-4">
+                        <div className={`bg-gradient-to-r ${colors[color]} p-3 rounded-lg`}>
+                            <span className="text-2xl">{icon}</span>
+                        </div>
+                        {trend && (
+                            <span className={`text-sm ${trend > 0 ? 'text-green-400' : 'text-red-400'}`}>
+                                {trend > 0 ? '↑' : '↓'} {Math.abs(trend)}%
+                            </span>
+                        )}
+                    </div>
+                    <div className="text-2xl font-semibold mb-1">{value}</div>
+                    <div className="text-sm text-gray-400">{title}</div>
+                </div>
+            );
+        }
+        
+        // Line Chart Component
+        function LineChart({ data, title }) {
+            const chartRef = useRef(null);
+            const chartInstance = useRef(null);
+            
+            useEffect(() => {
+                if (chartRef.current && data.length > 0) {
+                    const ctx = chartRef.current.getContext('2d');
+                    
+                    if (chartInstance.current) {
+                        chartInstance.current.destroy();
+                    }
+                    
+                    chartInstance.current = new Chart(ctx, {
+                        type: 'line',
+                        data: {
+                            labels: data.map(d => {
+                                const date = new Date(d.date);
+                                return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+                            }),
+                            datasets: [{
+                                label: 'Minutes',
+                                data: data.map(d => d.minutes || 0),
+                                borderColor: '#3b82f6',
+                                backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                                borderWidth: 2,
+                                tension: 0.4,
+                                fill: true,
+                                pointRadius: 4,
+                                pointHoverRadius: 6,
+                                pointBackgroundColor: '#3b82f6',
+                                pointBorderColor: '#fff',
+                                pointBorderWidth: 2
+                            }]
+                        },
+                        options: {
+                            responsive: true,
+                            maintainAspectRatio: false,
+                            plugins: {
+                                legend: {
+                                    display: false
+                                },
+                                tooltip: {
+                                    backgroundColor: 'rgba(0, 0, 0, 0.8)',
+                                    padding: 12,
+                                    cornerRadius: 8,
+                                    titleFont: {
+                                        size: 14
+                                    },
+                                    bodyFont: {
+                                        size: 13
+                                    }
+                                }
+                            },
+                            scales: {
+                                x: {
+                                    grid: {
+                                        color: 'rgba(255, 255, 255, 0.05)',
+                                        drawBorder: false
+                                    },
+                                    ticks: {
+                                        color: '#888888',
+                                        font: {
+                                            size: 11
+                                        }
+                                    }
+                                },
+                                y: {
+                                    grid: {
+                                        color: 'rgba(255, 255, 255, 0.05)',
+                                        drawBorder: false
+                                    },
+                                    ticks: {
+                                        color: '#888888',
+                                        font: {
+                                            size: 11
+                                        }
+                                    },
+                                    beginAtZero: true
+                                }
+                            }
+                        }
+                    });
+                }
+                
+                return () => {
+                    if (chartInstance.current) {
+                        chartInstance.current.destroy();
+                    }
+                };
+            }, [data]);
+            
+            return (
+                <div className="glass p-6 fade-in">
+                    <h3 className="text-lg font-medium mb-4">{title}</h3>
+                    <div className="chart-container">
+                        <canvas ref={chartRef}></canvas>
+                    </div>
+                </div>
+            );
+        }
+        
+        // Bar Chart Component
+        function BarChart({ data, title }) {
+            const chartRef = useRef(null);
+            const chartInstance = useRef(null);
+            
+            useEffect(() => {
+                if (chartRef.current && data.labels.length > 0) {
+                    const ctx = chartRef.current.getContext('2d');
+                    
+                    if (chartInstance.current) {
+                        chartInstance.current.destroy();
+                    }
+                    
+                    chartInstance.current = new Chart(ctx, {
+                        type: 'bar',
+                        data: {
+                            labels: data.labels,
+                            datasets: [{
+                                label: 'Tasks',
+                                data: data.values,
+                                backgroundColor: [
+                                    'rgba(59, 130, 246, 0.8)',
+                                    'rgba(16, 185, 129, 0.8)',
+                                    'rgba(245, 158, 11, 0.8)'
+                                ],
+                                borderColor: [
+                                    '#3b82f6',
+                                    '#10b981',
+                                    '#f59e0b'
+                                ],
+                                borderWidth: 1,
+                                borderRadius: 8
+                            }]
+                        },
+                        options: {
+                            responsive: true,
+                            maintainAspectRatio: false,
+                            plugins: {
+                                legend: {
+                                    display: false
+                                }
+                            },
+                            scales: {
+                                x: {
+                                    grid: {
+                                        display: false
+                                    },
+                                    ticks: {
+                                        color: '#888888'
+                                    }
+                                },
+                                y: {
+                                    grid: {
+                                        color: 'rgba(255, 255, 255, 0.05)',
+                                        drawBorder: false
+                                    },
+                                    ticks: {
+                                        color: '#888888',
+                                        stepSize: 1
+                                    },
+                                    beginAtZero: true
+                                }
+                            }
+                        }
+                    });
+                }
+                
+                return () => {
+                    if (chartInstance.current) {
+                        chartInstance.current.destroy();
+                    }
+                };
+            }, [data]);
+            
+            return (
+                <div className="glass p-6 fade-in">
+                    <h3 className="text-lg font-medium mb-4">{title}</h3>
+                    <div className="chart-container">
+                        <canvas ref={chartRef}></canvas>
+                    </div>
+                </div>
+            );
+        }
 
         function Dashboard() {
             const [sessions, setSessions] = useState([]);
@@ -121,6 +458,16 @@
                 });
                 
                 const quarterlyQuests = Math.floor(totalWeeks / 12);
+                
+                // Calculate completion rate
+                const completionRate = totalWeeks > 0 ? Math.round((weeksAllTasksCompleted / totalWeeks) * 100) : 0;
+                
+                // Calculate task distribution
+                const taskDistribution = {
+                    task1: sessions.filter(s => s.task1).length,
+                    task2: sessions.filter(s => s.task2).length,
+                    task3: sessions.filter(s => s.task3).length
+                };
 
                 return {
                     totalWeeks,
@@ -130,7 +477,9 @@
                     weeksAllTasksCompleted,
                     consecutiveTasksCompleted,
                     totalTasksPlanned,
-                    quarterlyQuests
+                    quarterlyQuests,
+                    completionRate,
+                    taskDistribution
                 };
             };
 
@@ -160,76 +509,163 @@
             };
 
             const metrics = calculateMetrics();
+            
+            // Prepare chart data
+            const last8Sessions = sessions.slice(0, 8).reverse();
+            const taskDistributionData = {
+                labels: ['Task 1', 'Task 2', 'Task 3'],
+                values: [metrics.taskDistribution.task1, metrics.taskDistribution.task2, metrics.taskDistribution.task3]
+            };
 
             if (loading) {
                 return (
-                    <div className="flex min-h-screen items-center justify-center p-4">
+                    <div className="min-h-screen bg-gradient-to-br from-gray-900 via-black to-gray-900 flex items-center justify-center p-4">
                         <div className="text-center">
-                            <div className="mb-4 h-8 w-8 animate-spin rounded-full border-2 border-gray-300 border-t-gray-600 mx-auto"></div>
-                            <p className="text-sm text-gray-500">Loading analytics...</p>
+                            <div className="mb-4 h-12 w-12 animate-spin rounded-full border-2 border-gray-700 border-t-blue-500 mx-auto"></div>
+                            <p className="text-gray-400">Loading analytics...</p>
                         </div>
                     </div>
                 );
             }
 
-            const cards = [
-                {
-                    label: "Total weeks",
-                    value: metrics.totalWeeks,
-                },
-                {
-                    label: "Consecutive weeks",
-                    value: metrics.consecutiveWeeks,
-                },
-                {
-                    label: "Total minutes",
-                    value: metrics.totalMinutes,
-                },
-                {
-                    label: "Avg minutes",
-                    value: metrics.avgMinutes,
-                },
-                {
-                    label: "Weeks all tasks done",
-                    value: metrics.weeksAllTasksCompleted,
-                },
-                {
-                    label: "Consecutive all tasks",
-                    value: metrics.consecutiveTasksCompleted,
-                },
-                {
-                    label: "Total tasks done",
-                    value: metrics.totalTasksPlanned,
-                },
-                {
-                    label: "Quarterly quests",
-                    value: metrics.quarterlyQuests,
-                }
-            ];
-
             return (
-                <div className="min-h-screen p-4 md:p-6 lg:p-8">
-                    <div className="mx-auto max-w-6xl">
-                        <div className="mb-8">
-                            <h1 className="text-2xl font-semibold tracking-tight">
-                                Weekly Planning Ritual Stats
+                <div className="min-h-screen bg-gradient-to-br from-gray-900 via-black to-gray-900 p-4 md:p-6 lg:p-8">
+                    <div className="mx-auto max-w-7xl">
+                        {/* Header */}
+                        <div className="mb-8 fade-in">
+                            <h1 className="text-3xl md:text-4xl font-bold mb-2">
+                                Weekly Planning Ritual
                             </h1>
+                            <p className="text-gray-400">Your progress dashboard</p>
                         </div>
 
-                        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-                            {cards.map((card, index) => (
-                                <div key={index} className="card p-6">
-                                    <div className="text-sm text-gray-500">
-                                        {card.label}
-                                    </div>
-                                    <div className="mt-2 text-2xl font-semibold">
-                                        {card.value}
-                                    </div>
+                        {/* Hero Section - Streak & Progress */}
+                        <div className="grid gap-6 md:grid-cols-3 mb-8">
+                            <div className="glass p-8 text-center md:col-span-1 fade-in">
+                                <h2 className="text-xl font-medium mb-6">Current Streak</h2>
+                                <div className="text-6xl font-bold gradient-text mb-2">
+                                    {metrics.consecutiveWeeks}
                                 </div>
-                            ))}
+                                <div className="text-gray-400">consecutive weeks</div>
+                                <div className="mt-4 text-sm text-green-400">
+                                    🔥 Keep it going!
+                                </div>
+                            </div>
+                            
+                            <div className="glass p-8 md:col-span-2 fade-in">
+                                <h2 className="text-xl font-medium mb-6">Progress Overview</h2>
+                                <div className="grid grid-cols-2 md:grid-cols-3 gap-6">
+                                    <ProgressRing 
+                                        percentage={(metrics.consecutiveWeeks / 52) * 100}
+                                        value={`${Math.round((metrics.consecutiveWeeks / 52) * 100)}%`}
+                                        label="Year Progress"
+                                        color="#3b82f6"
+                                    />
+                                    <ProgressRing 
+                                        percentage={metrics.completionRate}
+                                        value={`${metrics.completionRate}%`}
+                                        label="Completion Rate"
+                                        color="#10b981"
+                                    />
+                                    <ProgressRing 
+                                        percentage={Math.min((metrics.avgMinutes / 30) * 100, 100)}
+                                        value={metrics.avgMinutes}
+                                        label="Avg Minutes"
+                                        color="#f59e0b"
+                                    />
+                                </div>
+                            </div>
                         </div>
 
-                        <div className="mt-6 text-center">
+                        {/* Stats Grid */}
+                        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4 mb-8">
+                            <StatCard 
+                                title="Total Weeks"
+                                value={metrics.totalWeeks}
+                                icon="📅"
+                                color="blue"
+                            />
+                            <StatCard 
+                                title="Perfect Weeks"
+                                value={metrics.weeksAllTasksCompleted}
+                                icon="✨"
+                                color="green"
+                            />
+                            <StatCard 
+                                title="Tasks Planned"
+                                value={metrics.totalTasksPlanned}
+                                icon="📝"
+                                color="purple"
+                            />
+                            <StatCard 
+                                title="Quarterly Quests"
+                                value={metrics.quarterlyQuests}
+                                icon="🏆"
+                                color="orange"
+                            />
+                        </div>
+
+                        {/* Charts */}
+                        <div className="grid gap-6 md:grid-cols-2 mb-8">
+                            {last8Sessions.length > 0 && (
+                                <LineChart 
+                                    data={last8Sessions}
+                                    title="Session Duration Trend"
+                                />
+                            )}
+                            <BarChart 
+                                data={taskDistributionData}
+                                title="Task Distribution"
+                            />
+                        </div>
+
+                        {/* Recent Sessions */}
+                        <div className="glass p-6 fade-in">
+                            <h3 className="text-lg font-medium mb-4">Recent Sessions</h3>
+                            <div className="overflow-x-auto">
+                                <table className="w-full">
+                                    <thead>
+                                        <tr className="border-b border-gray-800">
+                                            <th className="text-left py-3 px-4 text-sm text-gray-400">Date</th>
+                                            <th className="text-left py-3 px-4 text-sm text-gray-400">Duration</th>
+                                            <th className="text-left py-3 px-4 text-sm text-gray-400">Tasks</th>
+                                            <th className="text-left py-3 px-4 text-sm text-gray-400">Status</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {sessions.slice(0, 5).map((session, index) => (
+                                            <tr key={index} className="border-b border-gray-800 hover:bg-white hover:bg-opacity-5 transition-colors">
+                                                <td className="py-3 px-4">
+                                                    {new Date(session.date).toLocaleDateString('en-US', {
+                                                        month: 'short',
+                                                        day: 'numeric',
+                                                        year: 'numeric'
+                                                    })}
+                                                </td>
+                                                <td className="py-3 px-4">
+                                                    {session.minutes || 0} min
+                                                </td>
+                                                <td className="py-3 px-4">
+                                                    {[session.task1, session.task2, session.task3].filter(Boolean).length}/3
+                                                </td>
+                                                <td className="py-3 px-4">
+                                                    <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs ${
+                                                        session.tasks_completed 
+                                                            ? 'bg-green-500 bg-opacity-20 text-green-400' 
+                                                            : 'bg-yellow-500 bg-opacity-20 text-yellow-400'
+                                                    }`}>
+                                                        {session.tasks_completed ? 'Completed' : 'In Progress'}
+                                                    </span>
+                                                </td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+
+                        {/* Footer */}
+                        <div className="mt-8 text-center">
                             <p className="text-sm text-gray-500">
                                 Last updated: {new Date().toLocaleString('en-US', {
                                     month: 'numeric',
