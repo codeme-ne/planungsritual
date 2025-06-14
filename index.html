@@ -162,6 +162,69 @@
             quarterlyChampion: { name: "Quarterly Champion", icon: "🏆", description: "Complete 1 quarterly quest" }
         };
         
+        // Safari-safe storage utility
+        const SafeStorage = {
+            set: (key, value) => {
+                const serialized = JSON.stringify(value);
+                try {
+                    // Try sessionStorage first
+                    sessionStorage.setItem(key, serialized);
+                    return true;
+                } catch (e) {
+                    try {
+                        // Fallback to localStorage
+                        localStorage.setItem(key, serialized);
+                        return true;
+                    } catch (e2) {
+                        // Store in memory as final fallback
+                        window.__memoryStorage = window.__memoryStorage || {};
+                        window.__memoryStorage[key] = serialized;
+                        return true;
+                    }
+                }
+            },
+            
+            get: (key) => {
+                try {
+                    // Try sessionStorage first
+                    const value = sessionStorage.getItem(key);
+                    if (value) return JSON.parse(value);
+                } catch (e) {
+                    // Ignore errors
+                }
+                
+                try {
+                    // Try localStorage
+                    const value = localStorage.getItem(key);
+                    if (value) return JSON.parse(value);
+                } catch (e) {
+                    // Ignore errors
+                }
+                
+                try {
+                    // Try memory storage
+                    const memoryStorage = window.__memoryStorage || {};
+                    if (memoryStorage[key]) {
+                        return JSON.parse(memoryStorage[key]);
+                    }
+                } catch (e) {
+                    // Ignore errors
+                }
+                
+                return null;
+            },
+            
+            remove: (key) => {
+                try { sessionStorage.removeItem(key); } catch (e) {}
+                try { localStorage.removeItem(key); } catch (e) {}
+                try { 
+                    if (window.__memoryStorage) {
+                        delete window.__memoryStorage[key];
+                    }
+                } catch (e) {}
+            }
+        };
+        
         // Timer Component
         function Timer({ duration = 420, onComplete, quickMode = false }) {
             const [timeLeft, setTimeLeft] = useState(quickMode ? 0 : duration);
@@ -491,15 +554,8 @@
         
         // Main App Component
         function WeeklyPlanningApp() {
-            // Load saved state from sessionStorage
-            const savedState = (() => {
-                try {
-                    const saved = sessionStorage.getItem('planningAppState');
-                    return saved ? JSON.parse(saved) : null;
-                } catch (e) {
-                    return null;
-                }
-            })();
+            // Load saved state using SafeStorage
+            const savedState = SafeStorage.get('planningAppState');
             
             const [currentStep, setCurrentStep] = useState(savedState?.currentStep || 0);
             const [sessions, setSessions] = useState([]);
@@ -510,6 +566,7 @@
             const [quickMode, setQuickMode] = useState(savedState?.quickMode || false);
             const [showAchievements, setShowAchievements] = useState(false);
             const [newAchievements, setNewAchievements] = useState([]);
+            const [authError, setAuthError] = useState(null);
             const startTime = useRef(savedState?.startTime ? new Date(savedState.startTime) : new Date());
             
             const [currentSession, setCurrentSession] = useState(savedState?.currentSession || {
@@ -537,7 +594,7 @@
                 minutes: 30
             });
             
-            // Save state to sessionStorage whenever it changes
+            // Save state using SafeStorage whenever it changes
             useEffect(() => {
                 const stateToSave = {
                     currentStep,
@@ -545,7 +602,7 @@
                     currentSession,
                     startTime: startTime.current.toISOString()
                 };
-                sessionStorage.setItem('planningAppState', JSON.stringify(stateToSave));
+                SafeStorage.set('planningAppState', stateToSave);
             }, [currentStep, quickMode, currentSession]);
             
             const steps = [
@@ -557,24 +614,44 @@
                 { id: "dashboard", title: "Dashboard", icon: "📊", timer: false }
             ];
             
-            // Check for OAuth callback in URL
+            // Enhanced OAuth callback handling for Safari
             useEffect(() => {
-                const hash = window.location.hash;
-                if (hash && hash.includes('access_token')) {
-                    const params = new URLSearchParams(hash.substring(1));
-                    const token = params.get('access_token');
-                    if (token) {
-                        setAccessToken(token);
-                        if (gapi.client) {
-                            gapi.client.setToken({ access_token: token });
+                // Check URL for OAuth callback parameters
+                const urlParams = new URLSearchParams(window.location.search);
+                const hashParams = new URLSearchParams(window.location.hash.substring(1));
+                
+                // Look for access_token in both query params and hash
+                let token = urlParams.get('access_token') || hashParams.get('access_token');
+                
+                // Handle OAuth state parameter
+                const state = urlParams.get('state') || hashParams.get('state');
+                if (state && token) {
+                    try {
+                        // Decode state to restore app state
+                        const decodedState = JSON.parse(atob(state));
+                        if (decodedState.step) {
+                            setCurrentStep(decodedState.step);
                         }
-                        // Clean up URL
-                        window.history.replaceState({}, document.title, window.location.pathname);
+                        if (decodedState.session) {
+                            setCurrentSession(prev => ({...prev, ...decodedState.session}));
+                        }
+                    } catch (e) {
+                        console.log('Could not decode state:', e);
                     }
+                }
+                
+                if (token) {
+                    setAccessToken(token);
+                    if (window.gapi && window.gapi.client) {
+                        gapi.client.setToken({ access_token: token });
+                    }
+                    // Clean up URL without reloading
+                    const newUrl = window.location.pathname;
+                    window.history.replaceState({}, document.title, newUrl);
                 }
             }, []);
             
-            // Initialize Google API
+            // Initialize Google API with better error handling
             useEffect(() => {
                 if (window.gapi) {
                     gapi.load('client', () => {
@@ -582,12 +659,17 @@
                             discoveryDocs: ['https://www.googleapis.com/discovery/v1/apis/calendar/v3/rest'],
                         }).then(() => {
                             setGapiLoaded(true);
+                            // Restore token if available
+                            if (accessToken) {
+                                gapi.client.setToken({ access_token: accessToken });
+                            }
                         }).catch((error) => {
                             console.error('GAPI initialization error:', error);
+                            setAuthError('Failed to initialize Google API');
                         });
                     });
                 }
-            }, []);
+            }, [accessToken]);
             
             // Load sessions
             useEffect(() => {
@@ -674,63 +756,94 @@
                 }
             };
             
+            // Improved Google login with Safari optimizations
             const handleGoogleLogin = () => {
+                setAuthError(null);
+                
                 if (!window.google || !window.google.accounts) {
-                    alert('Google login not available. Please refresh the page.');
+                    setAuthError('Google services nicht verfügbar. Bitte Seite neu laden.');
                     return;
                 }
                 
-                // Save current state before OAuth flow
-                const stateToSave = {
-                    currentStep,
-                    quickMode,
-                    currentSession,
-                    startTime: startTime.current.toISOString()
+                // Save current state in OAuth state parameter for Safari
+                const appState = {
+                    step: currentStep,
+                    session: currentSession,
+                    timestamp: Date.now()
                 };
-                sessionStorage.setItem('planningAppState', JSON.stringify(stateToSave));
+                const encodedState = btoa(JSON.stringify(appState));
                 
+                // Enhanced Safari-compatible OAuth configuration
                 const tokenClient = google.accounts.oauth2.initTokenClient({
                     client_id: CLIENT_ID,
                     scope: SCOPES,
+                    state: encodedState,
                     callback: (response) => {
                         if (response.error) {
-                            alert('Login failed: ' + response.error);
+                            console.error('OAuth error:', response.error);
+                            setAuthError(`Anmeldung fehlgeschlagen: ${response.error}`);
                             return;
                         }
-                        setAccessToken(response.access_token);
-                        gapi.client.setToken({
-                            access_token: response.access_token
-                        });
+                        
+                        if (response.access_token) {
+                            setAccessToken(response.access_token);
+                            if (window.gapi && window.gapi.client) {
+                                gapi.client.setToken({ access_token: response.access_token });
+                            }
+                            setAuthError(null);
+                        }
                     },
-                    // Use redirect flow on mobile devices
+                    error_callback: (error) => {
+                        console.error('OAuth error callback:', error);
+                        setAuthError('Anmeldung abgebrochen oder fehlgeschlagen');
+                    },
+                    // Always use redirect on mobile for better Safari compatibility
                     ux_mode: /iPhone|iPad|iPod|Android/i.test(navigator.userAgent) ? 'redirect' : 'popup',
-                    redirect_uri: window.location.origin
+                    redirect_uri: window.location.origin + window.location.pathname
                 });
                 
-                tokenClient.requestAccessToken();
+                try {
+                    tokenClient.requestAccessToken();
+                } catch (error) {
+                    console.error('Token request error:', error);
+                    setAuthError('OAuth-Anfrage fehlgeschlagen');
+                }
             };
             
             const handleSignOut = () => {
                 setAccessToken(null);
-                if (gapi.client) {
+                setAuthError(null);
+                if (window.gapi && window.gapi.client) {
                     gapi.client.setToken(null);
+                }
+                if (window.google && window.google.accounts && window.google.accounts.oauth2) {
+                    google.accounts.oauth2.revoke(accessToken, () => {
+                        console.log('Token revoked');
+                    });
                 }
             };
             
             const createCalendarEvents = async () => {
                 if (!accessToken) {
-                    alert('Please sign in to Google first!');
+                    setAuthError('Bitte erst bei Google anmelden!');
                     return;
                 }
                 
                 setCalendarSaving(true);
+                setAuthError(null);
                 
                 try {
                     const tasks = [
                         { summary: currentSession.task1, date: currentSession.task1_date, startTime: currentSession.task1_start_time, endTime: currentSession.task1_end_time },
                         { summary: currentSession.task2, date: currentSession.task2_date, startTime: currentSession.task2_start_time, endTime: currentSession.task2_end_time },
                         { summary: currentSession.task3, date: currentSession.task3_date, startTime: currentSession.task3_start_time, endTime: currentSession.task3_end_time }
-                    ].filter(t => t.summary);
+                    ].filter(t => t.summary && t.summary.trim());
+                    
+                    if (tasks.length === 0) {
+                        alert('Keine Aufgaben zum Speichern vorhanden.');
+                        setCalendarSaving(false);
+                        return;
+                    }
                     
                     for (const task of tasks) {
                         const event = {
@@ -758,12 +871,17 @@
                         });
                     }
                     
-                    alert('Tasks saved to calendar!');
+                    alert(`${tasks.length} Aufgaben in Kalender gespeichert!`);
                     finishAndSave();
                     
                 } catch (error) {
-                    console.error('Error:', error);
-                    alert('Error saving to calendar.');
+                    console.error('Calendar error:', error);
+                    if (error.status === 401) {
+                        setAuthError('Anmeldung abgelaufen. Bitte neu anmelden.');
+                        setAccessToken(null);
+                    } else {
+                        setAuthError('Fehler beim Speichern in Kalender.');
+                    }
                     setCalendarSaving(false);
                 }
             };
@@ -772,7 +890,6 @@
                 const endTime = new Date();
                 const durationMinutes = Math.round((endTime - startTime.current) / 60000);
                 
-                // Nur die Basis-Felder die garantiert existieren
                 const finalSession = {
                     date: currentSession.date,
                     tasks_completed: currentSession.tasks_completed || false,
@@ -851,7 +968,7 @@
             };
             
             const startNewSession = () => {
-                sessionStorage.removeItem('planningAppState');
+                SafeStorage.remove('planningAppState');
                 window.location.reload();
             };
             
@@ -1056,21 +1173,29 @@
                                         quickMode={quickMode}
                                     />
                                     
+                                    {/* Enhanced Google connection UI */}
                                     {gapiLoaded && (
-                                        <div className="glass rounded-xl p-3 mb-4">
+                                        <div className="glass rounded-xl p-4 mb-4">
                                             {!accessToken ? (
-                                                <div className="flex items-center justify-between">
-                                                    <span className="text-sm text-gray-400">Calendar sync</span>
-                                                    <button
-                                                        onClick={handleGoogleLogin}
-                                                        className="text-sm bg-white text-black px-3 py-1 rounded-lg hover:bg-gray-200 transition-colors"
-                                                    >
-                                                        Connect Google
-                                                    </button>
+                                                <div>
+                                                    <div className="flex items-center justify-between mb-2">
+                                                        <span className="text-sm text-gray-400">Calendar sync</span>
+                                                        <button
+                                                            onClick={handleGoogleLogin}
+                                                            className="text-sm bg-white text-black px-4 py-2 rounded-lg hover:bg-gray-200 transition-colors"
+                                                        >
+                                                            Connect Google
+                                                        </button>
+                                                    </div>
+                                                    {authError && (
+                                                        <div className="text-xs text-red-400 mt-2">
+                                                            {authError}
+                                                        </div>
+                                                    )}
                                                 </div>
                                             ) : (
                                                 <div className="flex items-center justify-between">
-                                                    <span className="text-sm text-green-400">✓ Connected</span>
+                                                    <span className="text-sm text-green-400">✓ Connected to Google</span>
                                                     <button
                                                         onClick={handleSignOut}
                                                         className="text-xs text-gray-400 hover:text-white"
@@ -1121,7 +1246,7 @@
                                                     : 'bg-gray-800 text-gray-400'
                                             }`}
                                         >
-                                            {calendarSaving ? 'Saving...' : 'Save to Calendar & Complete'}
+                                            {calendarSaving ? 'Saving to Calendar...' : 'Save to Calendar & Complete'}
                                         </button>
                                     )}
                                     
