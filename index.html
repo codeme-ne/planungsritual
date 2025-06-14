@@ -544,6 +544,8 @@
                             discoveryDocs: ['https://www.googleapis.com/discovery/v1/apis/calendar/v3/rest'],
                         }).then(() => {
                             setGapiLoaded(true);
+                        }).catch((error) => {
+                            console.error('GAPI initialization error:', error);
                         });
                     });
                 }
@@ -583,10 +585,19 @@
                         },
                         body: JSON.stringify(session)
                     });
+                    
+                    if (!response.ok) {
+                        const error = await response.json();
+                        console.error('Supabase error:', error);
+                        alert('Speichern fehlgeschlagen. Siehe Konsole.');
+                        return;
+                    }
+                    
                     await fetchSessions();
                     checkAchievements(session);
                 } catch (error) {
-                    console.error('Error saving session:', error);
+                    console.error('Error saving:', error);
+                    alert('Fehler beim Speichern.');
                 }
             };
             
@@ -626,16 +637,26 @@
             };
             
             const handleGoogleLogin = () => {
+                if (!window.google || !window.google.accounts) {
+                    alert('Google login not available. Please refresh the page.');
+                    return;
+                }
+                
                 const tokenClient = google.accounts.oauth2.initTokenClient({
                     client_id: CLIENT_ID,
                     scope: SCOPES,
                     callback: (response) => {
+                        if (response.error) {
+                            alert('Login failed: ' + response.error);
+                            return;
+                        }
                         setAccessToken(response.access_token);
                         gapi.client.setToken({
                             access_token: response.access_token
                         });
                     },
                 });
+                
                 tokenClient.requestAccessToken();
             };
             
@@ -687,6 +708,7 @@
                         });
                     }
                     
+                    alert('Tasks saved to calendar!');
                     finishAndSave();
                     
                 } catch (error) {
@@ -700,10 +722,16 @@
                 const endTime = new Date();
                 const durationMinutes = Math.round((endTime - startTime.current) / 60000);
                 
+                // Nur die Basis-Felder die garantiert existieren
                 const finalSession = {
-                    ...currentSession,
-                    ritual_end_time: endTime.toISOString(),
-                    ritual_duration_minutes: durationMinutes,
+                    date: currentSession.date,
+                    tasks_completed: currentSession.tasks_completed || false,
+                    quarterly_goals: currentSession.quarterly_goals || '',
+                    successes: currentSession.successes || '',
+                    improvement: currentSession.improvement || '',
+                    task1: currentSession.task1 || '',
+                    task2: currentSession.task2 || '',
+                    task3: currentSession.task3 || '',
                     minutes: durationMinutes
                 };
                 
