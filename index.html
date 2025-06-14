@@ -8,6 +8,7 @@
     <!-- PWA Meta Tags -->
     <link rel="manifest" href="manifest.json">
     <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black">
     <meta name="apple-mobile-web-app-title" content="Planungsritual">
     <meta name="theme-color" content="#2563eb">
@@ -17,13 +18,22 @@
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- NEW Google Identity Services -->
+    <script src="https://accounts.google.com/gsi/client" async defer></script>
+    <!-- Google Calendar API -->
+    <script src="https://apis.google.com/js/api.js"></script>
 </head>
 <body>
     <div id="root"></div>
     <script type="text/babel">
         const { useState, useEffect } = React;
         
-        // Icons als SVG Components
+        // Google Calendar Config
+        const CLIENT_ID = '118826964338-8202hjmd39qq1rjp6c04cvm5hdlpqss0.apps.googleusercontent.com';
+        const SCOPES = 'https://www.googleapis.com/auth/calendar.events';
+        
+        // Icons
         const Target = () => (
             <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <circle cx="12" cy="12" r="10"></circle>
@@ -53,23 +63,71 @@
             </svg>
         );
 
+        const Clock = () => (
+            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <circle cx="12" cy="12" r="10"></circle>
+                <polyline points="12 6 12 12 16 14"></polyline>
+            </svg>
+        );
+
         // Supabase Config
         const SUPABASE_URL = 'https://yazzzpyohcdyvtdpjakb.supabase.co';
         const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inlhenp6cHlvaGNkeXZ0ZHBqYWtiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDk4NjIwOTksImV4cCI6MjA2NTQzODA5OX0.GnrnIlTJIw4VqKm4bHBAkO5vXJ1aWyrVL5oxIl1lCwA';
+
+        // Helper functions
+        function getNextMonday() {
+            const d = new Date();
+            const day = d.getDay();
+            const diff = (8 - day) % 7 || 7;
+            d.setDate(d.getDate() + diff);
+            return d.toISOString().split('T')[0];
+        }
+
+        function getNextTuesday() {
+            const d = new Date();
+            const day = d.getDay();
+            const diff = (9 - day) % 7 || 7;
+            d.setDate(d.getDate() + diff);
+            return d.toISOString().split('T')[0];
+        }
+
+        function getNextWednesday() {
+            const d = new Date();
+            const day = d.getDay();
+            const diff = (10 - day) % 7 || 7;
+            d.setDate(d.getDate() + diff);
+            return d.toISOString().split('T')[0];
+        }
 
         function WeeklyPlanningApp() {
           const [currentStep, setCurrentStep] = useState(0);
           const [sessions, setSessions] = useState([]);
           const [loading, setLoading] = useState(true);
+          const [gapiLoaded, setGapiLoaded] = useState(false);
+          const [accessToken, setAccessToken] = useState(null);
+          const [calendarSaving, setCalendarSaving] = useState(false);
+          
           const [currentSession, setCurrentSession] = useState({
             date: new Date().toISOString().split('T')[0],
+            ritual_start_time: new Date().toISOString(),
+            ritual_end_time: null,
+            ritual_duration_minutes: null,
             tasks_completed: false,
             quarterly_goals: '',
             successes: '',
             improvement: '',
             task1: '',
+            task1_date: getNextMonday(),
+            task1_start_time: '09:00',
+            task1_end_time: '10:00',
             task2: '',
+            task2_date: getNextTuesday(),
+            task2_start_time: '09:00',
+            task2_end_time: '10:00',
             task3: '',
+            task3_date: getNextWednesday(),
+            task3_start_time: '09:00',
+            task3_end_time: '10:00',
             minutes: 30
           });
 
@@ -79,10 +137,28 @@
             { title: "Reflektieren", icon: <CheckCircle /> },
             { title: "Erfolge", icon: <Calendar /> },
             { title: "Planen", icon: <Target /> },
+            { title: "Abschluss", icon: <Clock /> },
             { title: "Dashboard", icon: <TrendingUp /> }
           ];
 
-          // Lade Sessions von Supabase
+          // Initialize Google API (nur für Calendar API, nicht für Auth)
+          useEffect(() => {
+            console.log('Loading Google Calendar API...');
+            if (window.gapi) {
+              gapi.load('client', () => {
+                gapi.client.init({
+                  discoveryDocs: ['https://www.googleapis.com/discovery/v1/apis/calendar/v3/rest'],
+                }).then(() => {
+                  console.log('Google Calendar API loaded');
+                  setGapiLoaded(true);
+                }).catch((error) => {
+                  console.error('Error loading Calendar API:', error);
+                });
+              });
+            }
+          }, []);
+
+          // Load sessions from Supabase
           useEffect(() => {
             fetchSessions();
           }, []);
@@ -99,12 +175,114 @@
               setSessions(data || []);
               setLoading(false);
             } catch (error) {
-              console.error('Fehler beim Laden:', error);
+              console.error('Error loading sessions:', error);
               setLoading(false);
             }
           };
 
-          // Speichere Session in Supabase
+          // NEW Google Sign In mit Google Identity Services
+          const handleGoogleLogin = () => {
+            console.log('Starting Google login...');
+            
+            // Token Client für OAuth2
+            const tokenClient = google.accounts.oauth2.initTokenClient({
+              client_id: CLIENT_ID,
+              scope: SCOPES,
+              callback: (response) => {
+                console.log('Login successful, token received');
+                setAccessToken(response.access_token);
+                
+                // Set the token for gapi
+                gapi.client.setToken({
+                  access_token: response.access_token
+                });
+              },
+            });
+            
+            // Request token
+            tokenClient.requestAccessToken();
+          };
+
+          // Sign out
+          const handleSignOut = () => {
+            setAccessToken(null);
+            if (gapi.client) {
+              gapi.client.setToken(null);
+            }
+            console.log('Signed out');
+          };
+
+          // Create calendar events
+          const createCalendarEvents = async () => {
+            if (!accessToken) {
+              alert('Bitte melde dich erst bei Google an!');
+              return;
+            }
+
+            setCalendarSaving(true);
+            
+            try {
+              const tasks = [
+                {
+                  summary: currentSession.task1,
+                  date: currentSession.task1_date,
+                  startTime: currentSession.task1_start_time,
+                  endTime: currentSession.task1_end_time
+                },
+                {
+                  summary: currentSession.task2,
+                  date: currentSession.task2_date,
+                  startTime: currentSession.task2_start_time,
+                  endTime: currentSession.task2_end_time
+                },
+                {
+                  summary: currentSession.task3,
+                  date: currentSession.task3_date,
+                  startTime: currentSession.task3_start_time,
+                  endTime: currentSession.task3_end_time
+                }
+              ];
+
+              for (const task of tasks) {
+                if (task.summary) {
+                  const event = {
+                    'summary': task.summary,
+                    'description': 'Wöchentliche Planungsritual Aufgabe',
+                    'start': {
+                      'dateTime': `${task.date}T${task.startTime}:00`,
+                      'timeZone': 'Europe/Berlin'
+                    },
+                    'end': {
+                      'dateTime': `${task.date}T${task.endTime}:00`,
+                      'timeZone': 'Europe/Berlin'
+                    },
+                    'reminders': {
+                      'useDefault': false,
+                      'overrides': [
+                        {'method': 'popup', 'minutes': 10}
+                      ]
+                    }
+                  };
+
+                  await gapi.client.calendar.events.insert({
+                    'calendarId': 'primary',
+                    'resource': event
+                  });
+                }
+              }
+              
+              alert('Aufgaben wurden erfolgreich in deinen Kalender eingetragen!');
+              setCalendarSaving(false);
+              handleNext();
+              
+            } catch (error) {
+              console.error('Error creating calendar events:', error);
+              alert('Fehler beim Speichern in den Kalender. Bitte versuche es nochmal.');
+              setCalendarSaving(false);
+            }
+          };
+
+          // Save session to Supabase
           const saveSession = async (session) => {
             try {
               const response = await fetch(`${SUPABASE_URL}/rest/v1/planning_sessions`, {
@@ -120,14 +298,16 @@
               const data = await response.json();
               setSessions([...sessions, data[0]]);
             } catch (error) {
-              console.error('Fehler beim Speichern:', error);
+              console.error('Error saving session:', error);
             }
           };
 
+          // Calculate metrics
           const calculateMetrics = () => {
             const totalWeeks = sessions.length;
             const consecutiveWeeks = calculateConsecutive(sessions);
-            const totalMinutes = sessions.reduce((sum, s) => sum + s.minutes, 0);
+            const totalMinutes = sessions.reduce((sum, s) => sum + (s.ritual_duration_minutes || s.minutes || 0), 0);
+            const avgMinutes = totalWeeks > 0 ? Math.round(totalMinutes / totalWeeks) : 0;
             const weeksAllTasksCompleted = sessions.filter(s => s.tasks_completed).length;
             const consecutiveTasksCompleted = calculateConsecutiveCompleted(sessions);
             const totalTasksCompleted = sessions.reduce((sum, s) => {
@@ -142,6 +322,7 @@
               totalWeeks,
               consecutiveWeeks,
               totalMinutes,
+              avgMinutes,
               weeksAllTasksCompleted,
               consecutiveTasksCompleted,
               totalTasksCompleted
@@ -174,10 +355,21 @@
           };
 
           const handleNext = async () => {
-            if (currentStep === 4) {
-              await saveSession(currentSession);
-              setCurrentStep(5);
-            } else if (currentStep < 5) {
+            if (currentStep === 5) {
+              // Calculate ritual duration
+              const endTime = new Date();
+              const startTime = new Date(currentSession.ritual_start_time);
+              const durationMinutes = Math.round((endTime - startTime) / 60000);
+              
+              const finalSession = {
+                ...currentSession,
+                ritual_end_time: endTime.toISOString(),
+                ritual_duration_minutes: durationMinutes
+              };
+              
+              await saveSession(finalSession);
+              setCurrentStep(6);
+            } else if (currentStep < 6) {
               setCurrentStep(currentStep + 1);
             }
           };
@@ -186,13 +378,25 @@
             setCurrentStep(0);
             setCurrentSession({
               date: new Date().toISOString().split('T')[0],
+              ritual_start_time: new Date().toISOString(),
+              ritual_end_time: null,
+              ritual_duration_minutes: null,
               tasks_completed: false,
               quarterly_goals: '',
               successes: '',
               improvement: '',
               task1: '',
+              task1_date: getNextMonday(),
+              task1_start_time: '09:00',
+              task1_end_time: '10:00',
               task2: '',
+              task2_date: getNextTuesday(),
+              task2_start_time: '09:00',
+              task2_end_time: '10:00',
               task3: '',
+              task3_date: getNextWednesday(),
+              task3_start_time: '09:00',
+              task3_end_time: '10:00',
               minutes: 30
             });
           };
@@ -225,7 +429,7 @@
                         }`}
                       >
                         {step.icon}
-                        <span className="text-xs mt-1">{step.title}</span>
+                        <span className="text-xs mt-1 hidden sm:inline">{step.title}</span>
                       </div>
                     ))}
                   </div>
@@ -245,6 +449,11 @@
                       <p className="text-gray-600">
                         Nimm dir einen Moment, um dich zu zentrieren und auf die kommende Woche einzustimmen.
                       </p>
+                      <div className="bg-blue-50 p-4 rounded-lg">
+                        <p className="text-sm text-gray-600">
+                          Start-Zeit: {new Date(currentSession.ritual_start_time).toLocaleTimeString('de-DE')}
+                        </p>
+                      </div>
                       <button
                         onClick={handleNext}
                         className="mt-6 bg-blue-600 text-white px-6 py-2 rounded hover:bg-blue-700"
@@ -328,41 +537,175 @@
 
                   {currentStep === 4 && (
                     <div className="space-y-4">
-                      <h2 className="text-2xl font-semibold mb-4">5. Planen</h2>
+                      <h2 className="text-2xl font-semibold mb-4">5. Planen mit Google Kalender</h2>
+                      
+                      {/* Google Sign In Status */}
+                      <div className="bg-gray-50 p-4 rounded-lg mb-4">
+                        {!gapiLoaded ? (
+                          <p className="text-gray-600">Google API wird geladen...</p>
+                        ) : !accessToken ? (
+                          <div className="flex items-center justify-between">
+                            <p className="text-gray-600">Melde dich an, um Aufgaben in deinen Kalender zu übertragen:</p>
+                            <button
+                              onClick={handleGoogleLogin}
+                              className="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700"
+                            >
+                              Mit Google anmelden
+                            </button>
+                          </div>
+                        ) : (
+                          <div className="flex items-center justify-between">
+                            <p className="text-green-600">✓ Mit Google verbunden</p>
+                            <button
+                              onClick={handleSignOut}
+                              className="text-gray-600 underline text-sm"
+                            >
+                              Abmelden
+                            </button>
+                          </div>
+                        )}
+                      </div>
+
                       <p className="text-gray-600 mb-4">
-                        Plane drei high-leverage Aufgaben und schreibe sie in den Kalender.
+                        Plane drei high-leverage Aufgaben mit Datum und Zeit:
                       </p>
-                      <input
-                        type="text"
-                        className="w-full p-3 border rounded mb-3"
-                        placeholder="Aufgabe 1"
-                        value={currentSession.task1}
-                        onChange={(e) => setCurrentSession({...currentSession, task1: e.target.value})}
-                      />
-                      <input
-                        type="text"
-                        className="w-full p-3 border rounded mb-3"
-                        placeholder="Aufgabe 2"
-                        value={currentSession.task2}
-                        onChange={(e) => setCurrentSession({...currentSession, task2: e.target.value})}
-                      />
-                      <input
-                        type="text"
-                        className="w-full p-3 border rounded"
-                        placeholder="Aufgabe 3"
-                        value={currentSession.task3}
-                        onChange={(e) => setCurrentSession({...currentSession, task3: e.target.value})}
-                      />
+                      
+                      {/* Task 1 */}
+                      <div className="border rounded-lg p-4 mb-3">
+                        <input
+                          type="text"
+                          className="w-full p-3 border rounded mb-2"
+                          placeholder="Aufgabe 1"
+                          value={currentSession.task1}
+                          onChange={(e) => setCurrentSession({...currentSession, task1: e.target.value})}
+                        />
+                        <div className="grid grid-cols-3 gap-2">
+                          <input
+                            type="date"
+                            className="p-2 border rounded"
+                            value={currentSession.task1_date}
+                            onChange={(e) => setCurrentSession({...currentSession, task1_date: e.target.value})}
+                          />
+                          <input
+                            type="time"
+                            className="p-2 border rounded"
+                            value={currentSession.task1_start_time}
+                            onChange={(e) => setCurrentSession({...currentSession, task1_start_time: e.target.value})}
+                          />
+                          <input
+                            type="time"
+                            className="p-2 border rounded"
+                            value={currentSession.task1_end_time}
+                            onChange={(e) => setCurrentSession({...currentSession, task1_end_time: e.target.value})}
+                          />
+                        </div>
+                      </div>
+                      
+                      {/* Task 2 */}
+                      <div className="border rounded-lg p-4 mb-3">
+                        <input
+                          type="text"
+                          className="w-full p-3 border rounded mb-2"
+                          placeholder="Aufgabe 2"
+                          value={currentSession.task2}
+                          onChange={(e) => setCurrentSession({...currentSession, task2: e.target.value})}
+                        />
+                        <div className="grid grid-cols-3 gap-2">
+                          <input
+                            type="date"
+                            className="p-2 border rounded"
+                            value={currentSession.task2_date}
+                            onChange={(e) => setCurrentSession({...currentSession, task2_date: e.target.value})}
+                          />
+                          <input
+                            type="time"
+                            className="p-2 border rounded"
+                            value={currentSession.task2_start_time}
+                            onChange={(e) => setCurrentSession({...currentSession, task2_start_time: e.target.value})}
+                          />
+                          <input
+                            type="time"
+                            className="p-2 border rounded"
+                            value={currentSession.task2_end_time}
+                            onChange={(e) => setCurrentSession({...currentSession, task2_end_time: e.target.value})}
+                          />
+                        </div>
+                      </div>
+                      
+                      {/* Task 3 */}
+                      <div className="border rounded-lg p-4 mb-3">
+                        <input
+                          type="text"
+                          className="w-full p-3 border rounded mb-2"
+                          placeholder="Aufgabe 3"
+                          value={currentSession.task3}
+                          onChange={(e) => setCurrentSession({...currentSession, task3: e.target.value})}
+                        />
+                        <div className="grid grid-cols-3 gap-2">
+                          <input
+                            type="date"
+                            className="p-2 border rounded"
+                            value={currentSession.task3_date}
+                            onChange={(e) => setCurrentSession({...currentSession, task3_date: e.target.value})}
+                          />
+                          <input
+                            type="time"
+                            className="p-2 border rounded"
+                            value={currentSession.task3_start_time}
+                            onChange={(e) => setCurrentSession({...currentSession, task3_start_time: e.target.value})}
+                          />
+                          <input
+                            type="time"
+                            className="p-2 border rounded"
+                            value={currentSession.task3_end_time}
+                            onChange={(e) => setCurrentSession({...currentSession, task3_end_time: e.target.value})}
+                          />
+                        </div>
+                      </div>
+                      
+                      <button
+                        onClick={createCalendarEvents}
+                        disabled={calendarSaving || !accessToken}
+                        className={`mt-6 px-6 py-2 rounded ${
+                          accessToken && !calendarSaving
+                            ? 'bg-blue-600 text-white hover:bg-blue-700'
+                            : 'bg-gray-400 text-gray-200 cursor-not-allowed'
+                        }`}
+                      >
+                        {calendarSaving ? 'Speichere...' : 'In Kalender speichern & Abschließen'}
+                      </button>
+                      
                       <button
                         onClick={handleNext}
-                        className="mt-6 bg-blue-600 text-white px-6 py-2 rounded hover:bg-blue-700"
+                        className="mt-2 ml-2 text-gray-600 underline"
                       >
-                        Abschließen
+                        Ohne Kalender fortfahren
                       </button>
                     </div>
                   )}
 
                   {currentStep === 5 && (
+                    <div className="space-y-4 text-center">
+                      <h2 className="text-2xl font-semibold mb-4">Ritual abschließen</h2>
+                      <div className="bg-green-50 p-6 rounded-lg">
+                        <CheckCircle />
+                        <p className="text-lg font-semibold text-green-800 mt-4">
+                          Glückwunsch! Du hast dein wöchentliches Planungsritual abgeschlossen.
+                        </p>
+                        <div className="mt-4 text-gray-600">
+                          <p>Dauer: {Math.round((new Date() - new Date(currentSession.ritual_start_time)) / 60000)} Minuten</p>
+                        </div>
+                      </div>
+                      <button
+                        onClick={handleNext}
+                        className="mt-6 bg-green-600 text-white px-6 py-2 rounded hover:bg-green-700"
+                      >
+                        Zum Dashboard
+                      </button>
+                    </div>
+                  )}
+
+                  {currentStep === 6 && (
                     <div className="space-y-6">
                       <h2 className="text-2xl font-semibold mb-6">Dashboard</h2>
                       
@@ -382,6 +725,11 @@
                           <p className="text-2xl font-bold text-purple-600">{metrics.totalMinutes}</p>
                         </div>
                         
+                        <div className="bg-indigo-50 p-4 rounded">
+                          <p className="text-sm text-gray-600">Average minutes per ritual</p>
+                          <p className="text-2xl font-bold text-indigo-600">{metrics.avgMinutes}</p>
+                        </div>
+                        
                         <div className="bg-yellow-50 p-4 rounded">
                           <p className="text-sm text-gray-600">Total weeks committed all three weekly tasks</p>
                           <p className="text-2xl font-bold text-yellow-600">{metrics.weeksAllTasksCompleted}</p>
@@ -392,9 +740,9 @@
                           <p className="text-2xl font-bold text-red-600">{metrics.consecutiveTasksCompleted}</p>
                         </div>
                         
-                        <div className="bg-indigo-50 p-4 rounded">
+                        <div className="bg-teal-50 p-4 rounded md:col-span-2">
                           <p className="text-sm text-gray-600">Total committed tasks completed</p>
-                          <p className="text-2xl font-bold text-indigo-600">{metrics.totalTasksCompleted}</p>
+                          <p className="text-2xl font-bold text-teal-600">{metrics.totalTasksCompleted}</p>
                         </div>
                       </div>
 
@@ -415,11 +763,11 @@
         ReactDOM.render(<WeeklyPlanningApp />, document.getElementById('root'));
         
         // PWA Service Worker Registration
-        if ('serviceWorker' in navigator) {
+        if ('serviceWorker' in navigator && window.location.protocol === 'https:') {
             window.addEventListener('load', () => {
                 navigator.serviceWorker.register('sw.js')
                     .then(reg => console.log('Service Worker registered'))
-                    .catch(err => console.log('Service Worker registration failed'));
+                    .catch(err => console.log('Service Worker registration failed:', err));
             });
         }
     </script>
