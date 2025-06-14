@@ -2,16 +2,16 @@
 <html lang="de">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Wöchentliches Planungsritual</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <title>Weekly Planning Ritual</title>
     
     <!-- PWA Meta Tags -->
     <link rel="manifest" href="manifest.json">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="mobile-web-app-capable" content="yes">
-    <meta name="apple-mobile-web-app-status-bar-style" content="black">
-    <meta name="apple-mobile-web-app-title" content="Planungsritual">
-    <meta name="theme-color" content="#2563eb">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Planning Ritual">
+    <meta name="theme-color" content="#000000">
     <link rel="apple-touch-icon" href="icon-192.png">
     
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
@@ -19,62 +19,250 @@
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
     
-    <!-- NEW Google Identity Services -->
+    <!-- Google Identity Services -->
     <script src="https://accounts.google.com/gsi/client" async defer></script>
-    <!-- Google Calendar API -->
     <script src="https://apis.google.com/js/api.js"></script>
+    
+    <style>
+        * {
+            -webkit-tap-highlight-color: transparent;
+        }
+        
+        body {
+            overscroll-behavior-y: none;
+            -webkit-font-smoothing: antialiased;
+            background: #0a0a0a;
+            color: #ffffff;
+        }
+        
+        input, textarea {
+            font-size: 16px !important;
+            -webkit-appearance: none;
+        }
+        
+        button {
+            touch-action: manipulation;
+            user-select: none;
+        }
+        
+        .notion-style {
+            font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, "Apple Color Emoji", Arial, sans-serif, "Segoe UI Emoji", "Segoe UI Symbol";
+        }
+        
+        .glass {
+            background: rgba(255, 255, 255, 0.05);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        
+        .fade-in {
+            animation: fadeIn 0.5s ease-in;
+        }
+        
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        
+        .slide-in {
+            animation: slideIn 0.3s ease-out;
+        }
+        
+        @keyframes slideIn {
+            from { transform: translateX(100%); }
+            to { transform: translateX(0); }
+        }
+        
+        /* Chart styles */
+        .progress-ring {
+            transform: rotate(-90deg);
+        }
+        
+        .progress-ring__circle {
+            transition: stroke-dashoffset 0.35s;
+            stroke: #ffffff;
+            stroke-width: 4;
+            fill: transparent;
+        }
+        
+        /* Custom scrollbar */
+        ::-webkit-scrollbar {
+            width: 4px;
+            height: 4px;
+        }
+        
+        ::-webkit-scrollbar-track {
+            background: rgba(255, 255, 255, 0.05);
+        }
+        
+        ::-webkit-scrollbar-thumb {
+            background: rgba(255, 255, 255, 0.2);
+            border-radius: 2px;
+        }
+        
+        ::-webkit-scrollbar-thumb:hover {
+            background: rgba(255, 255, 255, 0.3);
+        }
+        
+        /* Safe areas */
+        .safe-top {
+            padding-top: env(safe-area-inset-top);
+        }
+        
+        .safe-bottom {
+            padding-bottom: env(safe-area-inset-bottom);
+        }
+    </style>
 </head>
-<body>
+<body class="notion-style">
     <div id="root"></div>
     <script type="text/babel">
-        const { useState, useEffect } = React;
+        const { useState, useEffect, useRef } = React;
         
-        // Google Calendar Config
+        // Configuration
         const CLIENT_ID = '118826964338-8202hjmd39qq1rjp6c04cvm5hdlpqss0.apps.googleusercontent.com';
         const SCOPES = 'https://www.googleapis.com/auth/calendar.events';
-        
-        // Icons
-        const Target = () => (
-            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <circle cx="12" cy="12" r="10"></circle>
-                <circle cx="12" cy="12" r="6"></circle>
-                <circle cx="12" cy="12" r="2"></circle>
-            </svg>
-        );
-        
-        const TrendingUp = () => (
-            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
-            </svg>
-        );
-        
-        const CheckCircle = () => (
-            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-            </svg>
-        );
-        
-        const Calendar = () => (
-            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
-                <line x1="16" y1="2" x2="16" y2="6"></line>
-                <line x1="8" y1="2" x2="8" y2="6"></line>
-                <line x1="3" y1="10" x2="21" y2="10"></line>
-            </svg>
-        );
-
-        const Clock = () => (
-            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <circle cx="12" cy="12" r="10"></circle>
-                <polyline points="12 6 12 12 16 14"></polyline>
-            </svg>
-        );
-
-        // Supabase Config
         const SUPABASE_URL = 'https://yazzzpyohcdyvtdpjakb.supabase.co';
         const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inlhenp6cHlvaGNkeXZ0ZHBqYWtiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDk4NjIwOTksImV4cCI6MjA2NTQzODA5OX0.GnrnIlTJIw4VqKm4bHBAkO5vXJ1aWyrVL5oxIl1lCwA';
-
-        // Helper functions
+        
+        // Achievement definitions
+        const ACHIEVEMENTS = {
+            firstWeek: { name: "First Step", icon: "🌱", description: "Complete your first planning ritual" },
+            weekStreak5: { name: "Consistent", icon: "🔥", description: "5 weeks in a row" },
+            weekStreak10: { name: "Dedicated", icon: "💎", description: "10 weeks in a row" },
+            weekStreak25: { name: "Master Planner", icon: "👑", description: "25 weeks in a row" },
+            speedRunner: { name: "Speed Runner", icon: "⚡", description: "Complete ritual in under 10 minutes" },
+            taskMaster: { name: "Task Master", icon: "✅", description: "Complete all 3 tasks for 4 weeks" },
+            earlyBird: { name: "Early Bird", icon: "🌅", description: "Complete ritual before 9 AM" },
+            nightOwl: { name: "Night Owl", icon: "🦉", description: "Complete ritual after 9 PM" },
+            quarterlyChampion: { name: "Quarterly Champion", icon: "🏆", description: "Complete 1 quarterly quest" }
+        };
+        
+        // Timer Component
+        function Timer({ duration = 420, onComplete, quickMode = false }) {
+            const [timeLeft, setTimeLeft] = useState(quickMode ? 0 : duration);
+            const [isActive, setIsActive] = useState(!quickMode);
+            const circumference = 2 * Math.PI * 40;
+            
+            useEffect(() => {
+                if (quickMode) {
+                    onComplete?.();
+                    return;
+                }
+                
+                if (!isActive || timeLeft === 0) return;
+                
+                const interval = setInterval(() => {
+                    setTimeLeft(time => {
+                        if (time <= 1) {
+                            onComplete?.();
+                            if ('vibrate' in navigator) {
+                                navigator.vibrate([200, 100, 200]);
+                            }
+                            return 0;
+                        }
+                        return time - 1;
+                    });
+                }, 1000);
+                
+                return () => clearInterval(interval);
+            }, [isActive, timeLeft, onComplete, quickMode]);
+            
+            if (quickMode) return null;
+            
+            const minutes = Math.floor(timeLeft / 60);
+            const seconds = timeLeft % 60;
+            const progress = ((duration - timeLeft) / duration) * circumference;
+            
+            return (
+                <div className="glass rounded-2xl p-6 mb-6 fade-in">
+                    <div className="flex items-center justify-between">
+                        <div className="text-center">
+                            <div className="text-4xl font-mono font-light">
+                                {String(minutes).padStart(2, '0')}:{String(seconds).padStart(2, '0')}
+                            </div>
+                            <div className="text-xs text-gray-400 mt-1">Remaining</div>
+                        </div>
+                        
+                        <svg className="progress-ring" width="88" height="88">
+                            <circle
+                                className="text-gray-800"
+                                strokeWidth="4"
+                                stroke="currentColor"
+                                fill="transparent"
+                                r="40"
+                                cx="44"
+                                cy="44"
+                            />
+                            <circle
+                                className="progress-ring__circle"
+                                strokeDasharray={`${circumference} ${circumference}`}
+                                strokeDashoffset={progress}
+                                r="40"
+                                cx="44"
+                                cy="44"
+                            />
+                        </svg>
+                    </div>
+                    
+                    <button
+                        onClick={() => setIsActive(!isActive)}
+                        className="mt-4 text-xs text-gray-400 hover:text-white transition-colors w-full"
+                    >
+                        {isActive ? 'Pause' : 'Resume'}
+                    </button>
+                </div>
+            );
+        }
+        
+        // Progress Chart Component
+        function ProgressChart({ value, max, size = 60 }) {
+            const percentage = (value / max) * 100;
+            const radius = size / 2 - 5;
+            const circumference = 2 * Math.PI * radius;
+            const offset = circumference - (percentage / 100) * circumference;
+            
+            return (
+                <svg width={size} height={size} className="transform -rotate-90">
+                    <circle
+                        cx={size / 2}
+                        cy={size / 2}
+                        r={radius}
+                        stroke="rgba(255,255,255,0.1)"
+                        strokeWidth="3"
+                        fill="none"
+                    />
+                    <circle
+                        cx={size / 2}
+                        cy={size / 2}
+                        r={radius}
+                        stroke="white"
+                        strokeWidth="3"
+                        fill="none"
+                        strokeDasharray={circumference}
+                        strokeDashoffset={offset}
+                        className="transition-all duration-500"
+                    />
+                </svg>
+            );
+        }
+        
+        // Achievement Badge Component
+        function AchievementBadge({ achievement, unlocked, isNew = false }) {
+            return (
+                <div className={`glass rounded-xl p-4 text-center transition-all ${
+                    unlocked ? 'opacity-100' : 'opacity-30'
+                } ${isNew ? 'ring-2 ring-yellow-500 animate-pulse' : ''}`}>
+                    <div className="text-3xl mb-2">{achievement.icon}</div>
+                    <div className="text-xs font-medium">{achievement.name}</div>
+                    {unlocked && isNew && (
+                        <div className="text-xs text-yellow-500 mt-1">NEW!</div>
+                    )}
+                </div>
+            );
+        }
+        
+        // Date helper functions
         function getNextMonday() {
             const d = new Date();
             const day = d.getDay();
@@ -82,7 +270,7 @@
             d.setDate(d.getDate() + diff);
             return d.toISOString().split('T')[0];
         }
-
+        
         function getNextTuesday() {
             const d = new Date();
             const day = d.getDay();
@@ -90,7 +278,7 @@
             d.setDate(d.getDate() + diff);
             return d.toISOString().split('T')[0];
         }
-
+        
         function getNextWednesday() {
             const d = new Date();
             const day = d.getDay();
@@ -98,739 +286,752 @@
             d.setDate(d.getDate() + diff);
             return d.toISOString().split('T')[0];
         }
-
+        
+        // Main App Component
         function WeeklyPlanningApp() {
-          const [currentStep, setCurrentStep] = useState(0);
-          const [sessions, setSessions] = useState([]);
-          const [loading, setLoading] = useState(true);
-          const [gapiLoaded, setGapiLoaded] = useState(false);
-          const [accessToken, setAccessToken] = useState(null);
-          const [calendarSaving, setCalendarSaving] = useState(false);
-          
-          const [currentSession, setCurrentSession] = useState({
-            date: new Date().toISOString().split('T')[0],
-            ritual_start_time: new Date().toISOString(),
-            ritual_end_time: null,
-            ritual_duration_minutes: null,
-            tasks_completed: false,
-            tasks_completed_count: 0,
-            quarterly_goals: '',
-            successes: '',
-            improvement: '',
-            task1: '',
-            task1_date: getNextMonday(),
-            task1_start_time: '09:00',
-            task1_end_time: '10:00',
-            task2: '',
-            task2_date: getNextTuesday(),
-            task2_start_time: '09:00',
-            task2_end_time: '10:00',
-            task3: '',
-            task3_date: getNextWednesday(),
-            task3_start_time: '09:00',
-            task3_end_time: '10:00',
-            minutes: 30
-          });
-
-          const steps = [
-            { title: "Ausrichten", icon: <Target /> },
-            { title: "Kurs prüfen", icon: <TrendingUp /> },
-            { title: "Reflektieren", icon: <CheckCircle /> },
-            { title: "Erfolge", icon: <Calendar /> },
-            { title: "Planen", icon: <Target /> },
-            { title: "Abschluss", icon: <Clock /> },
-            { title: "Dashboard", icon: <TrendingUp /> }
-          ];
-
-          // Initialize Google API (nur für Calendar API, nicht für Auth)
-          useEffect(() => {
-            console.log('Loading Google Calendar API...');
-            if (window.gapi) {
-              gapi.load('client', () => {
-                gapi.client.init({
-                  discoveryDocs: ['https://www.googleapis.com/discovery/v1/apis/calendar/v3/rest'],
-                }).then(() => {
-                  console.log('Google Calendar API loaded');
-                  setGapiLoaded(true);
-                }).catch((error) => {
-                  console.error('Error loading Calendar API:', error);
-                });
-              });
-            }
-          }, []);
-
-          // Load sessions from Supabase
-          useEffect(() => {
-            fetchSessions();
-          }, []);
-
-          const fetchSessions = async () => {
-            try {
-              const response = await fetch(`${SUPABASE_URL}/rest/v1/planning_sessions?select=*`, {
-                headers: {
-                  'apikey': SUPABASE_ANON_KEY,
-                  'Authorization': `Bearer ${SUPABASE_ANON_KEY}`
-                }
-              });
-              const data = await response.json();
-              setSessions(data || []);
-              setLoading(false);
-            } catch (error) {
-              console.error('Error loading sessions:', error);
-              setLoading(false);
-            }
-          };
-
-          // NEW Google Sign In mit Google Identity Services
-          const handleGoogleLogin = () => {
-            console.log('Starting Google login...');
+            const [currentStep, setCurrentStep] = useState(0);
+            const [sessions, setSessions] = useState([]);
+            const [loading, setLoading] = useState(true);
+            const [gapiLoaded, setGapiLoaded] = useState(false);
+            const [accessToken, setAccessToken] = useState(null);
+            const [calendarSaving, setCalendarSaving] = useState(false);
+            const [quickMode, setQuickMode] = useState(false);
+            const [showAchievements, setShowAchievements] = useState(false);
+            const [newAchievements, setNewAchievements] = useState([]);
+            const startTime = useRef(new Date());
             
-            // Token Client für OAuth2
-            const tokenClient = google.accounts.oauth2.initTokenClient({
-              client_id: CLIENT_ID,
-              scope: SCOPES,
-              callback: (response) => {
-                console.log('Login successful, token received');
-                setAccessToken(response.access_token);
-                
-                // Set the token for gapi
-                gapi.client.setToken({
-                  access_token: response.access_token
-                });
-              },
+            const [currentSession, setCurrentSession] = useState({
+                date: new Date().toISOString().split('T')[0],
+                ritual_start_time: new Date().toISOString(),
+                ritual_end_time: null,
+                ritual_duration_minutes: null,
+                tasks_completed: false,
+                tasks_completed_count: 0,
+                quarterly_goals: '',
+                successes: '',
+                improvement: '',
+                task1: '',
+                task1_date: getNextMonday(),
+                task1_start_time: '09:00',
+                task1_end_time: '10:00',
+                task2: '',
+                task2_date: getNextTuesday(),
+                task2_start_time: '09:00',
+                task2_end_time: '10:00',
+                task3: '',
+                task3_date: getNextWednesday(),
+                task3_start_time: '09:00',
+                task3_end_time: '10:00',
+                minutes: 30
             });
             
-            // Request token
-            tokenClient.requestAccessToken();
-          };
-
-          // Sign out
-          const handleSignOut = () => {
-            setAccessToken(null);
-            if (gapi.client) {
-              gapi.client.setToken(null);
-            }
-            console.log('Signed out');
-          };
-
-          // Create calendar events
-          const createCalendarEvents = async () => {
-            if (!accessToken) {
-              alert('Bitte melde dich erst bei Google an!');
-              return;
-            }
-
-            setCalendarSaving(true);
+            const steps = [
+                { id: "start", title: "Welcome", icon: "🚀", timer: false },
+                { id: "align", title: "Align", icon: "🎯", timer: true },
+                { id: "reflect", title: "Reflect", icon: "💭", timer: true },
+                { id: "plan", title: "Plan", icon: "📅", timer: true },
+                { id: "complete", title: "Complete", icon: "✨", timer: false },
+                { id: "dashboard", title: "Dashboard", icon: "📊", timer: false }
+            ];
             
-            try {
-              const tasks = [
-                {
-                  summary: currentSession.task1,
-                  date: currentSession.task1_date,
-                  startTime: currentSession.task1_start_time,
-                  endTime: currentSession.task1_end_time
-                },
-                {
-                  summary: currentSession.task2,
-                  date: currentSession.task2_date,
-                  startTime: currentSession.task2_start_time,
-                  endTime: currentSession.task2_end_time
-                },
-                {
-                  summary: currentSession.task3,
-                  date: currentSession.task3_date,
-                  startTime: currentSession.task3_start_time,
-                  endTime: currentSession.task3_end_time
+            // Initialize Google API
+            useEffect(() => {
+                if (window.gapi) {
+                    gapi.load('client', () => {
+                        gapi.client.init({
+                            discoveryDocs: ['https://www.googleapis.com/discovery/v1/apis/calendar/v3/rest'],
+                        }).then(() => {
+                            setGapiLoaded(true);
+                        });
+                    });
                 }
-              ];
-
-              for (const task of tasks) {
-                if (task.summary) {
-                  const event = {
-                    'summary': task.summary,
-                    'description': 'Wöchentliche Planungsritual Aufgabe',
-                    'start': {
-                      'dateTime': `${task.date}T${task.startTime}:00`,
-                      'timeZone': 'Europe/Berlin'
-                    },
-                    'end': {
-                      'dateTime': `${task.date}T${task.endTime}:00`,
-                      'timeZone': 'Europe/Berlin'
-                    },
-                    'reminders': {
-                      'useDefault': false,
-                      'overrides': [
-                        {'method': 'popup', 'minutes': 10}
-                      ]
-                    }
-                  };
-
-                  await gapi.client.calendar.events.insert({
-                    'calendarId': 'primary',
-                    'resource': event
-                  });
+            }, []);
+            
+            // Load sessions
+            useEffect(() => {
+                fetchSessions();
+            }, []);
+            
+            const fetchSessions = async () => {
+                try {
+                    const response = await fetch(`${SUPABASE_URL}/rest/v1/planning_sessions?select=*&order=date.desc`, {
+                        headers: {
+                            'apikey': SUPABASE_ANON_KEY,
+                            'Authorization': `Bearer ${SUPABASE_ANON_KEY}`
+                        }
+                    });
+                    const data = await response.json();
+                    setSessions(data || []);
+                    setLoading(false);
+                } catch (error) {
+                    console.error('Error loading sessions:', error);
+                    setLoading(false);
                 }
-              }
-              
-              alert('Aufgaben wurden erfolgreich in deinen Kalender eingetragen!');
-              setCalendarSaving(false);
-              handleNext();
-              
-            } catch (error) {
-              console.error('Error creating calendar events:', error);
-              alert('Fehler beim Speichern in den Kalender. Bitte versuche es nochmal.');
-              setCalendarSaving(false);
-            }
-          };
-
-          // Save session to Supabase
-          const saveSession = async (session) => {
-            try {
-              const response = await fetch(`${SUPABASE_URL}/rest/v1/planning_sessions`, {
-                method: 'POST',
-                headers: {
-                  'apikey': SUPABASE_ANON_KEY,
-                  'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
-                  'Content-Type': 'application/json',
-                  'Prefer': 'return=representation'
-                },
-                body: JSON.stringify(session)
-              });
-              const data = await response.json();
-              setSessions([...sessions, data[0]]);
-            } catch (error) {
-              console.error('Error saving session:', error);
-            }
-          };
-
-          // Calculate metrics
-          const calculateMetrics = () => {
-            const totalWeeks = sessions.length;
-            const consecutiveWeeks = calculateConsecutive(sessions);
-            const totalMinutes = sessions.reduce((sum, s) => sum + (s.ritual_duration_minutes || s.minutes || 0), 0);
-            const avgMinutes = totalWeeks > 0 ? Math.round(totalMinutes / totalWeeks) : 0;
-            const weeksAllTasksCompleted = sessions.filter(s => s.tasks_completed).length;
-            const consecutiveTasksCompleted = calculateConsecutiveCompleted(sessions);
-            const totalTasksCompleted = sessions.reduce((sum, s) => {
-              let count = 0;
-              if (s.task1) count++;
-              if (s.task2) count++;
-              if (s.task3) count++;
-              return sum + count;
-            }, 0);
-
-            return {
-              totalWeeks,
-              consecutiveWeeks,
-              totalMinutes,
-              avgMinutes,
-              weeksAllTasksCompleted,
-              consecutiveTasksCompleted,
-              totalTasksCompleted
             };
-          };
-
-          const calculateConsecutive = (sessions) => {
-            if (sessions.length === 0) return 0;
-            let count = 1;
-            const sorted = [...sessions].sort((a, b) => new Date(b.date) - new Date(a.date));
             
-            for (let i = 1; i < sorted.length; i++) {
-              const diff = (new Date(sorted[i-1].date) - new Date(sorted[i].date)) / (1000 * 60 * 60 * 24);
-              if (diff <= 7) count++;
-              else break;
-            }
-            return count;
-          };
-
-          const calculateConsecutiveCompleted = (sessions) => {
-            if (sessions.length === 0) return 0;
-            let count = 0;
-            const sorted = [...sessions].sort((a, b) => new Date(b.date) - new Date(a.date));
+            const saveSession = async (session) => {
+                try {
+                    const response = await fetch(`${SUPABASE_URL}/rest/v1/planning_sessions`, {
+                        method: 'POST',
+                        headers: {
+                            'apikey': SUPABASE_ANON_KEY,
+                            'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+                            'Content-Type': 'application/json',
+                            'Prefer': 'return=representation'
+                        },
+                        body: JSON.stringify(session)
+                    });
+                    await fetchSessions();
+                    checkAchievements(session);
+                } catch (error) {
+                    console.error('Error saving session:', error);
+                }
+            };
             
-            for (let i = 0; i < sorted.length; i++) {
-              if (sorted[i].tasks_completed) count++;
-              else break;
+            const checkAchievements = (session) => {
+                const newlyUnlocked = [];
+                const metrics = calculateMetrics();
+                
+                // First week
+                if (metrics.totalWeeks === 1) {
+                    newlyUnlocked.push('firstWeek');
+                }
+                
+                // Streaks
+                if (metrics.consecutiveWeeks === 5) newlyUnlocked.push('weekStreak5');
+                if (metrics.consecutiveWeeks === 10) newlyUnlocked.push('weekStreak10');
+                if (metrics.consecutiveWeeks === 25) newlyUnlocked.push('weekStreak25');
+                
+                // Speed runner
+                if (session.ritual_duration_minutes && session.ritual_duration_minutes < 10) {
+                    newlyUnlocked.push('speedRunner');
+                }
+                
+                // Early bird / Night owl
+                const hour = new Date(session.ritual_start_time).getHours();
+                if (hour < 9) newlyUnlocked.push('earlyBird');
+                if (hour >= 21) newlyUnlocked.push('nightOwl');
+                
+                // Quarterly champion
+                if (Math.floor(metrics.totalWeeks / 12) >= 1) {
+                    newlyUnlocked.push('quarterlyChampion');
+                }
+                
+                if (newlyUnlocked.length > 0) {
+                    setNewAchievements(newlyUnlocked);
+                    setTimeout(() => setShowAchievements(true), 500);
+                }
+            };
+            
+            const handleGoogleLogin = () => {
+                const tokenClient = google.accounts.oauth2.initTokenClient({
+                    client_id: CLIENT_ID,
+                    scope: SCOPES,
+                    callback: (response) => {
+                        setAccessToken(response.access_token);
+                        gapi.client.setToken({
+                            access_token: response.access_token
+                        });
+                    },
+                });
+                tokenClient.requestAccessToken();
+            };
+            
+            const handleSignOut = () => {
+                setAccessToken(null);
+                if (gapi.client) {
+                    gapi.client.setToken(null);
+                }
+            };
+            
+            const createCalendarEvents = async () => {
+                if (!accessToken) {
+                    alert('Please sign in to Google first!');
+                    return;
+                }
+                
+                setCalendarSaving(true);
+                
+                try {
+                    const tasks = [
+                        { summary: currentSession.task1, date: currentSession.task1_date, startTime: currentSession.task1_start_time, endTime: currentSession.task1_end_time },
+                        { summary: currentSession.task2, date: currentSession.task2_date, startTime: currentSession.task2_start_time, endTime: currentSession.task2_end_time },
+                        { summary: currentSession.task3, date: currentSession.task3_date, startTime: currentSession.task3_start_time, endTime: currentSession.task3_end_time }
+                    ].filter(t => t.summary);
+                    
+                    for (const task of tasks) {
+                        const event = {
+                            'summary': task.summary,
+                            'description': 'Weekly Planning Ritual Task',
+                            'start': {
+                                'dateTime': `${task.date}T${task.startTime}:00`,
+                                'timeZone': 'Europe/Berlin'
+                            },
+                            'end': {
+                                'dateTime': `${task.date}T${task.endTime}:00`,
+                                'timeZone': 'Europe/Berlin'
+                            },
+                            'reminders': {
+                                'useDefault': false,
+                                'overrides': [
+                                    {'method': 'popup', 'minutes': 10}
+                                ]
+                            }
+                        };
+                        
+                        await gapi.client.calendar.events.insert({
+                            'calendarId': 'primary',
+                            'resource': event
+                        });
+                    }
+                    
+                    finishAndSave();
+                    
+                } catch (error) {
+                    console.error('Error:', error);
+                    alert('Error saving to calendar.');
+                    setCalendarSaving(false);
+                }
+            };
+            
+            const finishAndSave = async () => {
+                const endTime = new Date();
+                const durationMinutes = Math.round((endTime - startTime.current) / 60000);
+                
+                const finalSession = {
+                    ...currentSession,
+                    ritual_end_time: endTime.toISOString(),
+                    ritual_duration_minutes: durationMinutes,
+                    minutes: durationMinutes
+                };
+                
+                await saveSession(finalSession);
+                setCurrentStep(4);
+            };
+            
+            const handleNext = () => {
+                if (currentStep === 3 && !accessToken) {
+                    finishAndSave();
+                } else if (currentStep < 5) {
+                    setCurrentStep(currentStep + 1);
+                }
+            };
+            
+            const calculateMetrics = () => {
+                const totalWeeks = sessions.length;
+                const consecutiveWeeks = calculateConsecutive(sessions);
+                const totalMinutes = sessions.reduce((sum, s) => sum + (s.ritual_duration_minutes || s.minutes || 0), 0);
+                const avgMinutes = totalWeeks > 0 ? Math.round(totalMinutes / totalWeeks) : 0;
+                const weeksAllTasksCompleted = sessions.filter(s => s.tasks_completed).length;
+                const consecutiveTasksCompleted = calculateConsecutiveCompleted(sessions);
+                const totalTasksCompleted = sessions.reduce((sum, s) => {
+                    let count = 0;
+                    if (s.task1) count++;
+                    if (s.task2) count++;
+                    if (s.task3) count++;
+                    return sum + count;
+                }, 0);
+                const quarterlyQuests = Math.floor(totalWeeks / 12);
+                
+                return {
+                    totalWeeks,
+                    consecutiveWeeks,
+                    totalMinutes,
+                    avgMinutes,
+                    weeksAllTasksCompleted,
+                    consecutiveTasksCompleted,
+                    totalTasksCompleted,
+                    quarterlyQuests
+                };
+            };
+            
+            const calculateConsecutive = (sessions) => {
+                if (sessions.length === 0) return 0;
+                let count = 1;
+                const sorted = [...sessions].sort((a, b) => new Date(b.date) - new Date(a.date));
+                
+                for (let i = 1; i < sorted.length; i++) {
+                    const diff = (new Date(sorted[i-1].date) - new Date(sorted[i].date)) / (1000 * 60 * 60 * 24);
+                    if (diff <= 7) count++;
+                    else break;
+                }
+                return count;
+            };
+            
+            const calculateConsecutiveCompleted = (sessions) => {
+                if (sessions.length === 0) return 0;
+                let count = 0;
+                const sorted = [...sessions].sort((a, b) => new Date(b.date) - new Date(a.date));
+                
+                for (let i = 0; i < sorted.length; i++) {
+                    if (sorted[i].tasks_completed) count++;
+                    else break;
+                }
+                return count;
+            };
+            
+            const startNewSession = () => {
+                window.location.reload();
+            };
+            
+            const metrics = calculateMetrics();
+            
+            if (loading) {
+                return (
+                    <div className="min-h-screen flex items-center justify-center">
+                        <div className="text-gray-400">Loading...</div>
+                    </div>
+                );
             }
-            return count;
-          };
-
-          const handleNext = async () => {
-            if (currentStep === 5) {
-              // Calculate ritual duration
-              const endTime = new Date();
-              const startTime = new Date(currentSession.ritual_start_time);
-              const durationMinutes = Math.round((endTime - startTime) / 60000);
-              
-              const finalSession = {
-                ...currentSession,
-                ritual_end_time: endTime.toISOString(),
-                ritual_duration_minutes: durationMinutes
-              };
-              
-              await saveSession(finalSession);
-              setCurrentStep(6);
-            } else if (currentStep < 6) {
-              setCurrentStep(currentStep + 1);
-            }
-          };
-
-          const startNewSession = () => {
-            setCurrentStep(0);
-            setCurrentSession({
-              date: new Date().toISOString().split('T')[0],
-              ritual_start_time: new Date().toISOString(),
-              ritual_end_time: null,
-              ritual_duration_minutes: null,
-              tasks_completed: false,
-              tasks_completed_count: 0,
-              quarterly_goals: '',
-              successes: '',
-              improvement: '',
-              task1: '',
-              task1_date: getNextMonday(),
-              task1_start_time: '09:00',
-              task1_end_time: '10:00',
-              task2: '',
-              task2_date: getNextTuesday(),
-              task2_start_time: '09:00',
-              task2_end_time: '10:00',
-              task3: '',
-              task3_date: getNextWednesday(),
-              task3_start_time: '09:00',
-              task3_end_time: '10:00',
-              minutes: 30
-            });
-          };
-
-          const metrics = calculateMetrics();
-
-          if (loading) {
+            
             return (
-              <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-                <p className="text-gray-600">Lade Daten...</p>
-              </div>
-            );
-          }
-
-          return (
-            <div className="min-h-screen bg-gray-50 py-8">
-              <div className="max-w-4xl mx-auto px-4">
-                <h1 className="text-3xl font-bold text-gray-900 mb-8 text-center">
-                  Wöchentliches Planungsritual
-                </h1>
-
-                {/* Progress Bar */}
-                <div className="mb-8">
-                  <div className="flex justify-between mb-2">
-                    {steps.map((step, index) => (
-                      <div
-                        key={index}
-                        className={`flex flex-col items-center ${
-                          index <= currentStep ? 'text-blue-600' : 'text-gray-400'
-                        }`}
-                      >
-                        {step.icon}
-                        <span className="text-xs mt-1 hidden sm:inline">{step.title}</span>
-                      </div>
-                    ))}
-                  </div>
-                  <div className="w-full bg-gray-200 rounded-full h-2">
-                    <div
-                      className="bg-blue-600 h-2 rounded-full transition-all"
-                      style={{ width: `${((currentStep + 1) / steps.length) * 100}%` }}
-                    />
-                  </div>
-                </div>
-
-                {/* Content */}
-                <div className="bg-white rounded-lg shadow-lg p-8">
-                  {currentStep === 0 && (
-                    <div className="space-y-4">
-                      <h2 className="text-2xl font-semibold mb-4">1. Ausrichten</h2>
-                      <p className="text-gray-600">
-                        Nimm dir einen Moment, um dich zu zentrieren und auf die kommende Woche einzustimmen.
-                      </p>
-                      <div className="bg-blue-50 p-4 rounded-lg">
-                        <p className="text-sm text-gray-600">
-                          Start-Zeit: {new Date(currentSession.ritual_start_time).toLocaleTimeString('de-DE')}
-                        </p>
-                      </div>
-                      <button
-                        onClick={handleNext}
-                        className="mt-6 bg-blue-600 text-white px-6 py-2 rounded hover:bg-blue-700"
-                      >
-                        Weiter
-                      </button>
-                    </div>
-                  )}
-
-                  {currentStep === 1 && (
-                    <div className="space-y-4">
-                      <h2 className="text-2xl font-semibold mb-4">2. Bin ich auf Kurs mit meinen Quartalszielen?</h2>
-                      <textarea
-                        className="w-full p-3 border rounded"
-                        rows="3"
-                        placeholder="Wenn nicht, wie komme ich zurück?"
-                        value={currentSession.quarterly_goals}
-                        onChange={(e) => setCurrentSession({...currentSession, quarterly_goals: e.target.value})}
-                      />
-                      <div className="space-y-2">
-                        <p className="text-gray-700 font-medium mb-2">Wieviele wöchentliche Aufgaben habe ich letztmalig geschafft?</p>
-                        <div className="flex justify-center gap-4">
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setCurrentSession({
-                                ...currentSession, 
-                                tasks_completed: false,
-                                tasks_completed_count: 0
-                              });
-                            }}
-                            className={`px-8 py-4 rounded-lg text-xl font-bold transition-colors ${
-                              currentSession.tasks_completed_count === 0 
-                                ? 'bg-blue-600 text-white' 
-                                : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-                            }`}
-                          >
-                            0
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setCurrentSession({
-                                ...currentSession, 
-                                tasks_completed: false,
-                                tasks_completed_count: 1
-                              });
-                            }}
-                            className={`px-8 py-4 rounded-lg text-xl font-bold transition-colors ${
-                              currentSession.tasks_completed_count === 1 
-                                ? 'bg-blue-600 text-white' 
-                                : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-                            }`}
-                          >
-                            1
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setCurrentSession({
-                                ...currentSession, 
-                                tasks_completed: false,
-                                tasks_completed_count: 2
-                              });
-                            }}
-                            className={`px-8 py-4 rounded-lg text-xl font-bold transition-colors ${
-                              currentSession.tasks_completed_count === 2 
-                                ? 'bg-blue-600 text-white' 
-                                : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-                            }`}
-                          >
-                            2
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setCurrentSession({
-                                ...currentSession, 
-                                tasks_completed: true,
-                                tasks_completed_count: 3
-                              });
-                            }}
-                            className={`px-8 py-4 rounded-lg text-xl font-bold transition-colors ${
-                              currentSession.tasks_completed_count === 3 
-                                ? 'bg-blue-600 text-white' 
-                                : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-                            }`}
-                          >
-                            3
-                          </button>
-                        </div>
-                      </div>
-                      <button
-                        onClick={handleNext}
-                        className="mt-6 bg-blue-600 text-white px-6 py-2 rounded hover:bg-blue-700"
-                      >
-                        Weiter
-                      </button>
-                    </div>
-                  )}
-
-                  {currentStep === 2 && (
-                    <div className="space-y-4">
-                      <h2 className="text-2xl font-semibold mb-4">3. Reflektieren</h2>
-                      <p className="text-gray-600">
-                        Lass die vergangene Woche Revue passieren. Was lief gut? Was könnte besser laufen?
-                      </p>
-                      <button
-                        onClick={handleNext}
-                        className="mt-6 bg-blue-600 text-white px-6 py-2 rounded hover:bg-blue-700"
-                      >
-                        Weiter
-                      </button>
-                    </div>
-                  )}
-
-                  {currentStep === 3 && (
-                    <div className="space-y-4">
-                      <h2 className="text-2xl font-semibold mb-4">4. Erfolge & Dankbarkeit</h2>
-                      <textarea
-                        className="w-full p-3 border rounded"
-                        rows="4"
-                        placeholder="Liste alle Erfolge/Dinge für die du dankbar bist/Meilensteine der letzten Woche."
-                        value={currentSession.successes}
-                        onChange={(e) => setCurrentSession({...currentSession, successes: e.target.value})}
-                      />
-                      <input
-                        type="text"
-                        className="w-full p-3 border rounded"
-                        placeholder="Welche eine Sache möchtest du verbessern nächste Woche?"
-                        value={currentSession.improvement}
-                        onChange={(e) => setCurrentSession({...currentSession, improvement: e.target.value})}
-                      />
-                      <button
-                        onClick={handleNext}
-                        className="mt-6 bg-blue-600 text-white px-6 py-2 rounded hover:bg-blue-700"
-                      >
-                        Weiter
-                      </button>
-                    </div>
-                  )}
-
-                  {currentStep === 4 && (
-                    <div className="space-y-4">
-                      <h2 className="text-2xl font-semibold mb-4">5. Planen mit Google Kalender</h2>
-                      
-                      {/* Google Sign In Status */}
-                      <div className="bg-gray-50 p-4 rounded-lg mb-4">
-                        {!gapiLoaded ? (
-                          <p className="text-gray-600">Google API wird geladen...</p>
-                        ) : !accessToken ? (
-                          <div className="flex items-center justify-between">
-                            <p className="text-gray-600">Melde dich an, um Aufgaben in deinen Kalender zu übertragen:</p>
-                            <button
-                              onClick={handleGoogleLogin}
-                              className="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700"
-                            >
-                              Mit Google anmelden
-                            </button>
-                          </div>
-                        ) : (
-                          <div className="flex items-center justify-between">
-                            <p className="text-green-600">✓ Mit Google verbunden</p>
-                            <button
-                              onClick={handleSignOut}
-                              className="text-gray-600 underline text-sm"
-                            >
-                              Abmelden
-                            </button>
-                          </div>
+                <div className="min-h-screen safe-top safe-bottom">
+                    <div className="max-w-md mx-auto px-4 py-8">
+                        {/* Header */}
+                        {currentStep > 0 && currentStep < 4 && (
+                            <div className="mb-8 fade-in">
+                                <div className="flex justify-between items-center mb-4">
+                                    <div className="text-sm text-gray-400">
+                                        Step {currentStep} of 3
+                                    </div>
+                                    <button
+                                        onClick={() => setQuickMode(!quickMode)}
+                                        className="text-xs text-gray-400 hover:text-white transition-colors"
+                                    >
+                                        {quickMode ? '⚡ Quick Mode' : '🕐 Timer Mode'}
+                                    </button>
+                                </div>
+                                <div className="flex space-x-2">
+                                    {[1, 2, 3].map(step => (
+                                        <div
+                                            key={step}
+                                            className={`h-1 flex-1 rounded-full transition-all ${
+                                                step <= currentStep ? 'bg-white' : 'bg-gray-800'
+                                            }`}
+                                        />
+                                    ))}
+                                </div>
+                            </div>
                         )}
-                      </div>
-
-                      <p className="text-gray-600 mb-4">
-                        Plane drei high-leverage Aufgaben mit Datum und Zeit:
-                      </p>
-                      
-                      {/* Task 1 */}
-                      <div className="border rounded-lg p-4 mb-3">
-                        <input
-                          type="text"
-                          className="w-full p-3 border rounded mb-2"
-                          placeholder="Aufgabe 1"
-                          value={currentSession.task1}
-                          onChange={(e) => setCurrentSession({...currentSession, task1: e.target.value})}
-                        />
-                        <div className="grid grid-cols-3 gap-2">
-                          <input
-                            type="date"
-                            className="p-2 border rounded"
-                            value={currentSession.task1_date}
-                            onChange={(e) => setCurrentSession({...currentSession, task1_date: e.target.value})}
-                          />
-                          <input
-                            type="time"
-                            className="p-2 border rounded"
-                            value={currentSession.task1_start_time}
-                            onChange={(e) => setCurrentSession({...currentSession, task1_start_time: e.target.value})}
-                          />
-                          <input
-                            type="time"
-                            className="p-2 border rounded"
-                            value={currentSession.task1_end_time}
-                            onChange={(e) => setCurrentSession({...currentSession, task1_end_time: e.target.value})}
-                          />
+                        
+                        {/* Content */}
+                        <div className="glass rounded-2xl p-8 slide-in">
+                            {currentStep === 0 && (
+                                <div className="text-center fade-in">
+                                    <div className="text-6xl mb-6">🚀</div>
+                                    <h1 className="text-3xl font-light mb-2">Weekly Planning</h1>
+                                    <p className="text-gray-400 mb-8">
+                                        Opening this app is already a win.
+                                    </p>
+                                    
+                                    {metrics.consecutiveWeeks > 0 && (
+                                        <div className="glass rounded-xl p-4 mb-6">
+                                            <div className="flex items-center justify-center space-x-3">
+                                                <span className="text-3xl">🔥</span>
+                                                <span className="text-2xl font-light">{metrics.consecutiveWeeks}</span>
+                                                <span className="text-gray-400">week streak</span>
+                                            </div>
+                                        </div>
+                                    )}
+                                    
+                                    <button
+                                        onClick={handleNext}
+                                        className="w-full glass hover:bg-white hover:bg-opacity-10 py-4 rounded-xl font-medium transition-all active:scale-95"
+                                    >
+                                        Start Ritual
+                                    </button>
+                                    
+                                    <button
+                                        onClick={() => setCurrentStep(5)}
+                                        className="w-full text-gray-400 hover:text-white py-2 mt-2 transition-colors"
+                                    >
+                                        View Dashboard
+                                    </button>
+                                </div>
+                            )}
+                            
+                            {currentStep === 1 && (
+                                <div className="fade-in">
+                                    <div className="flex items-center space-x-3 mb-6">
+                                        <span className="text-3xl">🎯</span>
+                                        <h2 className="text-2xl font-light">Align</h2>
+                                    </div>
+                                    
+                                    <Timer 
+                                        duration={420}
+                                        onComplete={() => {}}
+                                        quickMode={quickMode}
+                                    />
+                                    
+                                    <div className="space-y-6">
+                                        <div>
+                                            <label className="block text-sm text-gray-400 mb-3">
+                                                Are you on track with your quarterly goals?
+                                            </label>
+                                            <textarea
+                                                className="w-full p-4 bg-black bg-opacity-50 border border-gray-800 rounded-xl focus:border-white focus:outline-none transition-colors resize-none"
+                                                rows="3"
+                                                placeholder="If not, how can you get back on track?"
+                                                value={currentSession.quarterly_goals}
+                                                onChange={(e) => setCurrentSession({...currentSession, quarterly_goals: e.target.value})}
+                                            />
+                                        </div>
+                                        
+                                        <div>
+                                            <label className="block text-sm text-gray-400 mb-3">
+                                                How many weekly tasks did you complete?
+                                            </label>
+                                            <div className="flex gap-4 justify-center">
+                                                {[0, 1, 2, 3].map(num => (
+                                                    <button
+                                                        key={num}
+                                                        onClick={() => setCurrentSession({
+                                                            ...currentSession, 
+                                                            tasks_completed_count: num,
+                                                            tasks_completed: num === 3
+                                                        })}
+                                                        className={`w-16 h-16 rounded-xl font-light text-xl transition-all ${
+                                                            currentSession.tasks_completed_count === num 
+                                                                ? 'bg-white text-black scale-110' 
+                                                                : 'glass hover:bg-white hover:bg-opacity-10'
+                                                        }`}
+                                                    >
+                                                        {num}
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    </div>
+                                    
+                                    <button
+                                        onClick={handleNext}
+                                        className="mt-8 w-full glass hover:bg-white hover:bg-opacity-10 py-4 rounded-xl font-medium transition-all active:scale-95"
+                                    >
+                                        Continue
+                                    </button>
+                                </div>
+                            )}
+                            
+                            {currentStep === 2 && (
+                                <div className="fade-in">
+                                    <div className="flex items-center space-x-3 mb-6">
+                                        <span className="text-3xl">💭</span>
+                                        <h2 className="text-2xl font-light">Reflect</h2>
+                                    </div>
+                                    
+                                    <Timer 
+                                        duration={420}
+                                        onComplete={() => {}}
+                                        quickMode={quickMode}
+                                    />
+                                    
+                                    <div className="space-y-6">
+                                        <div>
+                                            <label className="block text-sm text-gray-400 mb-3">
+                                                What were your wins, milestones, or gratitudes?
+                                            </label>
+                                            <textarea
+                                                className="w-full p-4 bg-black bg-opacity-50 border border-gray-800 rounded-xl focus:border-white focus:outline-none transition-colors resize-none"
+                                                rows="4"
+                                                placeholder="Celebrate your progress..."
+                                                value={currentSession.successes}
+                                                onChange={(e) => setCurrentSession({...currentSession, successes: e.target.value})}
+                                            />
+                                        </div>
+                                        
+                                        <div>
+                                            <label className="block text-sm text-gray-400 mb-3">
+                                                What's one thing you want to improve?
+                                            </label>
+                                            <input
+                                                type="text"
+                                                className="w-full p-4 bg-black bg-opacity-50 border border-gray-800 rounded-xl focus:border-white focus:outline-none transition-colors"
+                                                placeholder="Focus on one key improvement..."
+                                                value={currentSession.improvement}
+                                                onChange={(e) => setCurrentSession({...currentSession, improvement: e.target.value})}
+                                            />
+                                        </div>
+                                    </div>
+                                    
+                                    <button
+                                        onClick={handleNext}
+                                        className="mt-8 w-full glass hover:bg-white hover:bg-opacity-10 py-4 rounded-xl font-medium transition-all active:scale-95"
+                                    >
+                                        Continue to Planning
+                                    </button>
+                                </div>
+                            )}
+                            
+                            {currentStep === 3 && (
+                                <div className="fade-in">
+                                    <div className="flex items-center space-x-3 mb-6">
+                                        <span className="text-3xl">📅</span>
+                                        <h2 className="text-2xl font-light">Plan</h2>
+                                    </div>
+                                    
+                                    <Timer 
+                                        duration={420}
+                                        onComplete={() => {}}
+                                        quickMode={quickMode}
+                                    />
+                                    
+                                    {gapiLoaded && (
+                                        <div className="glass rounded-xl p-3 mb-4">
+                                            {!accessToken ? (
+                                                <div className="flex items-center justify-between">
+                                                    <span className="text-sm text-gray-400">Calendar sync</span>
+                                                    <button
+                                                        onClick={handleGoogleLogin}
+                                                        className="text-sm bg-white text-black px-3 py-1 rounded-lg hover:bg-gray-200 transition-colors"
+                                                    >
+                                                        Connect Google
+                                                    </button>
+                                                </div>
+                                            ) : (
+                                                <div className="flex items-center justify-between">
+                                                    <span className="text-sm text-green-400">✓ Connected</span>
+                                                    <button
+                                                        onClick={handleSignOut}
+                                                        className="text-xs text-gray-400 hover:text-white"
+                                                    >
+                                                        Disconnect
+                                                    </button>
+                                                </div>
+                                            )}
+                                        </div>
+                                    )}
+                                    
+                                    <p className="text-sm text-gray-400 text-center mb-6">
+                                        Choose 1-3 key tasks for next week
+                                    </p>
+                                    
+                                    <div className="space-y-3">
+                                        {[1, 2, 3].map(num => (
+                                            <div key={num} className="glass rounded-xl p-4">
+                                                <input
+                                                    type="text"
+                                                    className="w-full p-2 bg-transparent border-b border-gray-800 focus:border-white focus:outline-none transition-colors mb-3"
+                                                    placeholder={`Task ${num} ${num > 1 ? '(optional)' : ''}`}
+                                                    value={currentSession[`task${num}`] || ''}
+                                                    onChange={(e) => setCurrentSession({...currentSession, [`task${num}`]: e.target.value})}
+                                                />
+                                                <div className="grid grid-cols-3 gap-2">
+                                                    <input
+                                                        type="date"
+                                                        className="p-2 bg-black bg-opacity-50 border border-gray-800 rounded-lg text-xs focus:border-white focus:outline-none transition-colors"
+                                                        value={currentSession[`task${num}_date`] || ''}
+                                                        onChange={(e) => setCurrentSession({...currentSession, [`task${num}_date`]: e.target.value})}
+                                                    />
+                                                    <input
+                                                        type="time"
+                                                        className="p-2 bg-black bg-opacity-50 border border-gray-800 rounded-lg text-xs focus:border-white focus:outline-none transition-colors"
+                                                        value={currentSession[`task${num}_start_time`] || '09:00'}
+                                                        onChange={(e) => setCurrentSession({...currentSession, [`task${num}_start_time`]: e.target.value})}
+                                                    />
+                                                    <input
+                                                        type="time"
+                                                        className="p-2 bg-black bg-opacity-50 border border-gray-800 rounded-lg text-xs focus:border-white focus:outline-none transition-colors"
+                                                        value={currentSession[`task${num}_end_time`] || '10:00'}
+                                                        onChange={(e) => setCurrentSession({...currentSession, [`task${num}_end_time`]: e.target.value})}
+                                                    />
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                    
+                                    {accessToken && (
+                                        <button
+                                            onClick={createCalendarEvents}
+                                            disabled={calendarSaving}
+                                            className={`mt-6 w-full py-4 rounded-xl font-medium transition-all ${
+                                                !calendarSaving
+                                                    ? 'bg-white text-black hover:bg-gray-200 active:scale-95'
+                                                    : 'bg-gray-800 text-gray-400'
+                                            }`}
+                                        >
+                                            {calendarSaving ? 'Saving...' : 'Save to Calendar & Complete'}
+                                        </button>
+                                    )}
+                                    
+                                    <button
+                                        onClick={finishAndSave}
+                                        className={`w-full glass hover:bg-white hover:bg-opacity-10 py-4 rounded-xl font-medium transition-all active:scale-95 ${accessToken ? 'mt-2' : 'mt-6'}`}
+                                    >
+                                        Complete Ritual
+                                    </button>
+                                </div>
+                            )}
+                            
+                            {currentStep === 4 && (
+                                <div className="text-center fade-in">
+                                    <div className="text-6xl mb-6">✨</div>
+                                    
+                                    <h2 className="text-3xl font-light mb-2">Well done!</h2>
+                                    <p className="text-gray-400 mb-6">Your week is planned.</p>
+                                    
+                                    <div className="glass rounded-xl p-6 mb-6 text-left">
+                                        <div className="space-y-3">
+                                            <div className="flex justify-between">
+                                                <span className="text-gray-400">Duration</span>
+                                                <span className="font-light">
+                                                    {Math.round((new Date() - startTime.current) / 60000)} minutes
+                                                </span>
+                                            </div>
+                                            <div className="flex justify-between">
+                                                <span className="text-gray-400">Tasks planned</span>
+                                                <span className="font-light">
+                                                    {[currentSession.task1, currentSession.task2, currentSession.task3].filter(Boolean).length}
+                                                </span>
+                                            </div>
+                                            <div className="flex justify-between">
+                                                <span className="text-gray-400">Streak</span>
+                                                <span className="font-light flex items-center">
+                                                    <span className="mr-1">🔥</span> {metrics.consecutiveWeeks}
+                                                </span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    
+                                    {newAchievements.length > 0 && (
+                                        <button
+                                            onClick={() => setShowAchievements(true)}
+                                            className="mb-4 text-yellow-500 text-sm animate-pulse"
+                                        >
+                                            🏆 New achievements unlocked!
+                                        </button>
+                                    )}
+                                    
+                                    <button
+                                        onClick={handleNext}
+                                        className="w-full glass hover:bg-white hover:bg-opacity-10 py-4 rounded-xl font-medium transition-all active:scale-95"
+                                    >
+                                        View Dashboard
+                                    </button>
+                                </div>
+                            )}
+                            
+                            {currentStep === 5 && (
+                                <div className="fade-in">
+                                    <div className="flex items-center justify-between mb-6">
+                                        <h2 className="text-2xl font-light">Dashboard</h2>
+                                        <button
+                                            onClick={() => setShowAchievements(!showAchievements)}
+                                            className="text-2xl hover:scale-110 transition-transform"
+                                        >
+                                            🏆
+                                        </button>
+                                    </div>
+                                    
+                                    {/* Streak Hero */}
+                                    <div className="glass rounded-2xl p-6 mb-6 text-center">
+                                        <div className="flex items-center justify-center space-x-4">
+                                            <ProgressChart value={metrics.consecutiveWeeks} max={52} size={80} />
+                                            <div className="text-left">
+                                                <div className="text-4xl font-light">{metrics.consecutiveWeeks}</div>
+                                                <div className="text-sm text-gray-400">week streak</div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    
+                                    {/* Stats Grid */}
+                                    <div className="grid grid-cols-2 gap-3 mb-6">
+                                        <div className="glass rounded-xl p-4 text-center">
+                                            <div className="text-2xl font-light mb-1">{metrics.totalWeeks}</div>
+                                            <div className="text-xs text-gray-400">Total weeks</div>
+                                        </div>
+                                        
+                                        <div className="glass rounded-xl p-4 text-center">
+                                            <div className="text-2xl font-light mb-1">{metrics.totalMinutes}</div>
+                                            <div className="text-xs text-gray-400">Total minutes</div>
+                                        </div>
+                                        
+                                        <div className="glass rounded-xl p-4 text-center">
+                                            <div className="text-2xl font-light mb-1">{metrics.avgMinutes}</div>
+                                            <div className="text-xs text-gray-400">Avg minutes</div>
+                                        </div>
+                                        
+                                        <div className="glass rounded-xl p-4 text-center">
+                                            <div className="text-2xl font-light mb-1">{metrics.totalTasksCompleted}</div>
+                                            <div className="text-xs text-gray-400">Tasks planned</div>
+                                        </div>
+                                        
+                                        <div className="glass rounded-xl p-4 text-center">
+                                            <div className="text-2xl font-light mb-1">{metrics.weeksAllTasksCompleted}</div>
+                                            <div className="text-xs text-gray-400">Perfect weeks</div>
+                                        </div>
+                                        
+                                        <div className="glass rounded-xl p-4 text-center">
+                                            <div className="text-2xl font-light mb-1">{metrics.quarterlyQuests}</div>
+                                            <div className="text-xs text-gray-400">Quests done</div>
+                                        </div>
+                                    </div>
+                                    
+                                    <button
+                                        onClick={startNewSession}
+                                        className="w-full glass hover:bg-white hover:bg-opacity-10 py-4 rounded-xl font-medium transition-all active:scale-95"
+                                    >
+                                        Start New Ritual
+                                    </button>
+                                    
+                                    <a 
+                                        href="https://www.neurohackingly.com/analytics"
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="block w-full text-center text-gray-400 hover:text-white py-2 mt-2 transition-colors"
+                                    >
+                                        Full Analytics →
+                                    </a>
+                                </div>
+                            )}
                         </div>
-                      </div>
-                      
-                      {/* Task 2 */}
-                      <div className="border rounded-lg p-4 mb-3">
-                        <input
-                          type="text"
-                          className="w-full p-3 border rounded mb-2"
-                          placeholder="Aufgabe 2"
-                          value={currentSession.task2}
-                          onChange={(e) => setCurrentSession({...currentSession, task2: e.target.value})}
-                        />
-                        <div className="grid grid-cols-3 gap-2">
-                          <input
-                            type="date"
-                            className="p-2 border rounded"
-                            value={currentSession.task2_date}
-                            onChange={(e) => setCurrentSession({...currentSession, task2_date: e.target.value})}
-                          />
-                          <input
-                            type="time"
-                            className="p-2 border rounded"
-                            value={currentSession.task2_start_time}
-                            onChange={(e) => setCurrentSession({...currentSession, task2_start_time: e.target.value})}
-                          />
-                          <input
-                            type="time"
-                            className="p-2 border rounded"
-                            value={currentSession.task2_end_time}
-                            onChange={(e) => setCurrentSession({...currentSession, task2_end_time: e.target.value})}
-                          />
-                        </div>
-                      </div>
-                      
-                      {/* Task 3 */}
-                      <div className="border rounded-lg p-4 mb-3">
-                        <input
-                          type="text"
-                          className="w-full p-3 border rounded mb-2"
-                          placeholder="Aufgabe 3"
-                          value={currentSession.task3}
-                          onChange={(e) => setCurrentSession({...currentSession, task3: e.target.value})}
-                        />
-                        <div className="grid grid-cols-3 gap-2">
-                          <input
-                            type="date"
-                            className="p-2 border rounded"
-                            value={currentSession.task3_date}
-                            onChange={(e) => setCurrentSession({...currentSession, task3_date: e.target.value})}
-                          />
-                          <input
-                            type="time"
-                            className="p-2 border rounded"
-                            value={currentSession.task3_start_time}
-                            onChange={(e) => setCurrentSession({...currentSession, task3_start_time: e.target.value})}
-                          />
-                          <input
-                            type="time"
-                            className="p-2 border rounded"
-                            value={currentSession.task3_end_time}
-                            onChange={(e) => setCurrentSession({...currentSession, task3_end_time: e.target.value})}
-                          />
-                        </div>
-                      </div>
-                      
-                      <button
-                        onClick={createCalendarEvents}
-                        disabled={calendarSaving || !accessToken}
-                        className={`mt-6 px-6 py-2 rounded ${
-                          accessToken && !calendarSaving
-                            ? 'bg-blue-600 text-white hover:bg-blue-700'
-                            : 'bg-gray-400 text-gray-200 cursor-not-allowed'
-                        }`}
-                      >
-                        {calendarSaving ? 'Speichere...' : 'In Kalender speichern & Abschließen'}
-                      </button>
-                      
-                      <button
-                        onClick={handleNext}
-                        className="mt-2 ml-2 text-gray-600 underline"
-                      >
-                        Ohne Kalender fortfahren
-                      </button>
+                        
+                        {/* Achievements Modal */}
+                        {showAchievements && (
+                            <div className="fixed inset-0 bg-black bg-opacity-80 flex items-center justify-center p-4 z-50 fade-in" onClick={() => setShowAchievements(false)}>
+                                <div className="glass rounded-2xl p-8 max-w-md w-full" onClick={e => e.stopPropagation()}>
+                                    <h3 className="text-2xl font-light mb-6 text-center">Achievements</h3>
+                                    <div className="grid grid-cols-3 gap-4">
+                                        {Object.entries(ACHIEVEMENTS).map(([key, achievement]) => {
+                                            const isUnlocked = 
+                                                (key === 'firstWeek' && metrics.totalWeeks >= 1) ||
+                                                (key === 'weekStreak5' && metrics.consecutiveWeeks >= 5) ||
+                                                (key === 'weekStreak10' && metrics.consecutiveWeeks >= 10) ||
+                                                (key === 'weekStreak25' && metrics.consecutiveWeeks >= 25) ||
+                                                (key === 'quarterlyChampion' && metrics.quarterlyQuests >= 1);
+                                            
+                                            return (
+                                                <AchievementBadge
+                                                    key={key}
+                                                    achievement={achievement}
+                                                    unlocked={isUnlocked}
+                                                    isNew={newAchievements.includes(key)}
+                                                />
+                                            );
+                                        })}
+                                    </div>
+                                    <button
+                                        onClick={() => setShowAchievements(false)}
+                                        className="mt-6 w-full glass hover:bg-white hover:bg-opacity-10 py-3 rounded-xl transition-all"
+                                    >
+                                        Close
+                                    </button>
+                                </div>
+                            </div>
+                        )}
                     </div>
-                  )}
-
-                  {currentStep === 5 && (
-                    <div className="space-y-4 text-center">
-                      <h2 className="text-2xl font-semibold mb-4">Ritual abschließen</h2>
-                      <div className="bg-green-50 p-6 rounded-lg">
-                        <CheckCircle />
-                        <p className="text-lg font-semibold text-green-800 mt-4">
-                          Glückwunsch! Du hast dein wöchentliches Planungsritual abgeschlossen.
-                        </p>
-                        <div className="mt-4 text-gray-600">
-                          <p>Dauer: {Math.round((new Date() - new Date(currentSession.ritual_start_time)) / 60000)} Minuten</p>
-                        </div>
-                      </div>
-                      <button
-                        onClick={handleNext}
-                        className="mt-6 bg-green-600 text-white px-6 py-2 rounded hover:bg-green-700"
-                      >
-                        Zum Dashboard
-                      </button>
-                    </div>
-                  )}
-
-                  {currentStep === 6 && (
-                    <div className="space-y-6">
-                      <h2 className="text-2xl font-semibold mb-6">Dashboard</h2>
-                      
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div className="bg-blue-50 p-4 rounded">
-                          <p className="text-sm text-gray-600">Total weeks doing weekly planning ritual</p>
-                          <p className="text-2xl font-bold text-blue-600">{metrics.totalWeeks}</p>
-                        </div>
-                        
-                        <div className="bg-green-50 p-4 rounded">
-                          <p className="text-sm text-gray-600">Consecutive weeks doing weekly planning ritual</p>
-                          <p className="text-2xl font-bold text-green-600">{metrics.consecutiveWeeks}</p>
-                        </div>
-                        
-                        <div className="bg-purple-50 p-4 rounded">
-                          <p className="text-sm text-gray-600">Minutes spent on weekly planning ritual</p>
-                          <p className="text-2xl font-bold text-purple-600">{metrics.totalMinutes}</p>
-                        </div>
-                        
-                        <div className="bg-indigo-50 p-4 rounded">
-                          <p className="text-sm text-gray-600">Average minutes per ritual</p>
-                          <p className="text-2xl font-bold text-indigo-600">{metrics.avgMinutes}</p>
-                        </div>
-                        
-                        <div className="bg-yellow-50 p-4 rounded">
-                          <p className="text-sm text-gray-600">Total weeks committed all three weekly tasks</p>
-                          <p className="text-2xl font-bold text-yellow-600">{metrics.weeksAllTasksCompleted}</p>
-                        </div>
-                        
-                        <div className="bg-red-50 p-4 rounded">
-                          <p className="text-sm text-gray-600">Consecutive weeks committed all three weekly tasks</p>
-                          <p className="text-2xl font-bold text-red-600">{metrics.consecutiveTasksCompleted}</p>
-                        </div>
-                        
-                        <div className="bg-teal-50 p-4 rounded md:col-span-2">
-                          <p className="text-sm text-gray-600">Total committed tasks completed</p>
-                          <p className="text-2xl font-bold text-teal-600">{metrics.totalTasksCompleted}</p>
-                        </div>
-                      </div>
-
-                      <button
-                        onClick={startNewSession}
-                        className="mt-6 bg-green-600 text-white px-6 py-2 rounded hover:bg-green-700"
-                      >
-                        Neue Woche starten
-                      </button>
-                    </div>
-                  )}
                 </div>
-              </div>
-            </div>
-          );
+            );
         }
-
+        
+        // Render app
         ReactDOM.render(<WeeklyPlanningApp />, document.getElementById('root'));
         
-        // PWA Service Worker Registration
+        // Service Worker
         if ('serviceWorker' in navigator && window.location.protocol === 'https:') {
             window.addEventListener('load', () => {
                 navigator.serviceWorker.register('sw.js')
                     .then(reg => console.log('Service Worker registered'))
-                    .catch(err => console.log('Service Worker registration failed:', err));
+                    .catch(err => console.log('Service Worker error:', err));
             });
         }
     </script>
